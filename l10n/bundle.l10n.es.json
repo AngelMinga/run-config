@@ -110,5 +110,18 @@
   "No device": "Sin dispositivo",
   "No device selected here or in the Flutter extension. Click to pick one.": "No hay dispositivo elegido aquí ni en la extensión de Flutter. Haz clic para elegir uno.",
   "{0} is not supported by this project.": "{0} no está soportado por este proyecto.",
-  "{0} (Flutter extension's device)": "{0} (dispositivo de la extensión de Flutter)"
+  "{0} (Flutter extension's device)": "{0} (dispositivo de la extensión de Flutter)",
+  "Script": "Script",
+  "Scripts": "Scripts",
+  "Script path:": "Ruta del script:",
+  "Script options:": "Opciones del script:",
+  "Interpreter:": "Intérprete:",
+  "Working directory:": "Carpeta de trabajo:",
+  "Arguments passed to the script.": "Argumentos que recibe el script.",
+  "Empty: the script's directory.": "Vacío: la carpeta del script.",
+  "Empty: chosen from the extension (.py → Python of venv/.venv or python3, .sh → bash, .js → node).": "Vacío: se elige por la extensión (.py → Python de venv/.venv o python3, .sh → bash, .js → node).",
+  "Runs in the Run window (Debug Console). Type there to answer the script's prompts.": "Se ejecuta en la ventana Run (Debug Console). Escribe ahí para responder a las preguntas del script.",
+  "Script not found: {0}": "No se encontró el script: {0}",
+  "Working directory not found: {0}": "No se encontró la carpeta de trabajo: {0}",
+  "Script path is required.": "La ruta del script es obligatoria."
 }

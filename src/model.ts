@@ -4,11 +4,13 @@ import * as path from 'node:path';
 export const DEBUG_TYPE = 'npm-run';
 /** Debug type contributed in package.json; resolved into a Dart-Code `dart` launch. */
 export const FLUTTER_TYPE = 'flutter-run';
+/** Debug type contributed in package.json; runs a script (Python, shell…) through the inline adapter in scriptAdapter.ts. */
+export const SCRIPT_TYPE = 'script-run';
 
-export type ConfigKind = 'npm' | 'flutter';
+export type ConfigKind = 'npm' | 'flutter' | 'script';
 
 export function isRunType(type: unknown): boolean {
-  return type === DEBUG_TYPE || type === FLUTTER_TYPE;
+  return type === DEBUG_TYPE || type === FLUTTER_TYPE || type === SCRIPT_TYPE;
 }
 
 /** npm commands offered in the "Command" combo (same idea as IntelliJ's list). */
@@ -45,6 +47,10 @@ export interface RunConfig {
   flavor: string;
   /** Flutter: additional arguments to `flutter attach`. */
   attachArgs: string;
+  /** Script: interpreter command with options (`python3 -X dev`); '' → chosen from the script's extension. Script path is `program`. */
+  interpreter: string;
+  /** Script: working directory; '' → the script's directory. */
+  workingDir: string;
 }
 
 export interface LaunchEntry {
@@ -74,6 +80,8 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     runArgs: '',
     flavor: '',
     attachArgs: '',
+    interpreter: '',
+    workingDir: '',
   };
 }
 
@@ -87,9 +95,9 @@ export function normalize(c: Partial<RunConfig> & { folder: string; name: string
   return out;
 }
 
-/** The file that places a configuration in a project (package.json or the Dart entrypoint). */
+/** The file that places a configuration in a project (package.json, the Dart entrypoint or the script). */
 export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program'>): string {
-  return c.kind === 'flutter' ? c.program : c.packageJson;
+  return c.kind === 'npm' ? c.packageJson : c.program;
 }
 
 export function configKey(c: { folder: string; name: string }): string {
@@ -127,6 +135,21 @@ export function portablePath(value: string, folder: string, home: string): strin
 }
 
 export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
+  if (c.kind === 'script') {
+    const entry: LaunchEntry = {
+      type: SCRIPT_TYPE,
+      request: 'launch',
+      name: c.name,
+      script: portablePath(c.program, c.folder, home),
+    };
+    if (c.arguments) { entry.arguments = c.arguments; }
+    if (c.interpreter) { entry.interpreter = portablePath(c.interpreter, c.folder, home); }
+    if (c.workingDir) { entry.workingDir = portablePath(c.workingDir, c.folder, home); }
+    if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
+    if (c.allowMultiple) { entry.allowMultipleInstances = true; }
+    if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
+    return entry;
+  }
   if (c.kind === 'flutter') {
     const entry: LaunchEntry = {
       type: FLUTTER_TYPE,
@@ -172,6 +195,19 @@ export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home
   const scripts = Array.isArray(e.scripts) ? e.scripts.map(String).join(' ') : str(e.scripts);
   const args = Array.isArray(e.arguments) ? e.arguments.map(String).join(' ') : str(e.arguments);
   const expand = (v: string) => (v ? expandVars(v, folder, home) : v);
+  if (e.type === SCRIPT_TYPE) {
+    return {
+      ...emptyConfig(folder, str(e.name), 'script'),
+      shared,
+      allowMultiple: e.allowMultipleInstances === true,
+      program: expand(str(e.script)),
+      arguments: args,
+      interpreter: expand(str(e.interpreter)),
+      workingDir: expand(str(e.workingDir)),
+      env,
+      preLaunchTask: str(e.preLaunchTask),
+    };
+  }
   if (e.type === FLUTTER_TYPE) {
     return {
       ...emptyConfig(folder, str(e.name), 'flutter'),
@@ -339,6 +375,67 @@ export function buildFlutterLaunch(c: RunConfig, projectRoot: string, options: F
   if (options.deviceId) { launch.deviceId = options.deviceId; }
   if (toolArgs.length) { launch.toolArgs = toolArgs; }
   if (Object.keys(c.env).length) { launch.env = { ...c.env }; }
+  if (c.preLaunchTask) { launch.preLaunchTask = c.preLaunchTask; }
+  return launch;
+}
+
+/** Interpreters picked from the script's extension when the configuration leaves it empty. */
+const INTERPRETERS: Record<string, string> = {
+  '.sh': 'bash', '.bash': 'bash', '.zsh': 'zsh',
+  '.js': 'node', '.mjs': 'node', '.cjs': 'node', '.ts': 'npx tsx',
+  '.rb': 'ruby', '.pl': 'perl', '.php': 'php',
+};
+
+/** Python of a virtual environment (`venv/`, `.venv/`) in one of `dirs`, like IntelliJ's project interpreter. */
+export function findVenvPython(dirs: string[], exists: (p: string) => boolean): string | undefined {
+  for (const dir of dirs) {
+    for (const env of ['venv', '.venv']) {
+      for (const exe of ['python3', 'python']) {
+        const p = path.join(dir, env, 'bin', exe);
+        if (exists(p)) { return p; }
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Command and leading arguments that run `script`: the configured interpreter, else one chosen by extension. */
+export function resolveInterpreter(
+  c: Pick<RunConfig, 'program' | 'interpreter' | 'workingDir' | 'folder'>,
+  exists: (p: string) => boolean,
+): { command: string; args: string[] } {
+  const custom = splitArgs(c.interpreter);
+  if (custom.length) {
+    return { command: custom[0], args: [...custom.slice(1), c.program] };
+  }
+  const ext = path.extname(c.program).toLowerCase();
+  if (ext === '.py') {
+    const python = findVenvPython([c.workingDir || path.dirname(c.program), c.folder], exists) ?? 'python3';
+    return { command: python, args: [c.program] };
+  }
+  const known = INTERPRETERS[ext];
+  if (known) {
+    const [command, ...rest] = known.split(' ');
+    return { command, args: [...rest, c.program] };
+  }
+  return { command: c.program, args: [] };
+}
+
+/** Builds the `script-run` launch handled by the inline adapter: command, args, cwd and env already resolved. */
+export function buildScriptLaunch(c: RunConfig, exists: (p: string) => boolean): Record<string, unknown> {
+  const { command, args } = resolveInterpreter(c, exists);
+  const launch: Record<string, unknown> = {
+    type: SCRIPT_TYPE,
+    request: 'launch',
+    name: c.name,
+    command,
+    args: [...args, ...splitArgs(c.arguments)],
+    cwd: c.workingDir || path.dirname(c.program),
+    // Unbuffered Python output, so it shows up in the Run console as it is printed.
+    env: { PYTHONUNBUFFERED: '1', ...c.env },
+    __runConfigKey: configKey(c),
+    __resolvedScript: true,
+  };
   if (c.preLaunchTask) { launch.preLaunchTask = c.preLaunchTask; }
   return launch;
 }

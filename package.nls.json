@@ -34,5 +34,12 @@
   "command.attach": "Flutter Attach",
   "command.selectDevice": "Select Flutter Device…",
   "attr.attachArgs": "Additional arguments to  (used by *Flutter Attach*).",
-  "attr.deviceId": "Device to run on. Empty: the device chosen with *Select Flutter Device…* (or the Dart extension's)."
+  "attr.deviceId": "Device to run on. Empty: the device chosen with *Select Flutter Device…* (or the Dart extension's).",
+  "debugger.script.label": "Script (Run Configuration)",
+  "attr.script": "Script to run (Python, shell, Node…).",
+  "attr.scriptArguments": "Arguments passed to the script.",
+  "attr.interpreter": "Interpreter command with its options. Empty: chosen from the extension (.py → venv/.venv Python or python3, .sh → bash, .js → node).",
+  "attr.workingDir": "Working directory. Empty: the script's directory.",
+  "snippet.script.label": "Run Configuration: Script",
+  "snippet.script.description": "Runs a Python or shell script, like IntelliJ's Python / Shell Script configurations."
 }

@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -36,7 +36,8 @@
   "activationEvents": [
     "onStartupFinished",
     "onDebugResolve:npm-run",
-    "onDebugResolve:flutter-run"
+    "onDebugResolve:flutter-run",
+    "onDebugResolve:script-run"
   ],
   "contributes": {
     "commands": [
@@ -342,6 +343,85 @@
               "request": "launch",
               "name": "${1:main.dart}",
               "program": "^\"\\${workspaceFolder}/${2:lib/main.dart}\""
+            }
+          }
+        ]
+      },
+      {
+        "type": "script-run",
+        "label": "%debugger.script.label%",
+        "languages": [
+          "python",
+          "shellscript"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "script"
+            ],
+            "properties": {
+              "script": {
+                "type": "string",
+                "description": "%attr.script%",
+                "default": "${workspaceFolder}/script.py"
+              },
+              "arguments": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.scriptArguments%"
+              },
+              "interpreter": {
+                "type": "string",
+                "description": "%attr.interpreter%",
+                "examples": [
+                  "python3",
+                  "bash",
+                  "node",
+                  "${workspaceFolder}/venv/bin/python3"
+                ]
+              },
+              "workingDir": {
+                "type": "string",
+                "description": "%attr.workingDir%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "script-run",
+            "request": "launch",
+            "name": "script",
+            "script": "^\"\\${workspaceFolder}/script.py\""
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%snippet.script.label%",
+            "description": "%snippet.script.description%",
+            "body": {
+              "type": "script-run",
+              "request": "launch",
+              "name": "${1:script}",
+              "script": "^\"\\${workspaceFolder}/${2:script.py}\"",
+              "arguments": "$3"
             }
           }
         ]

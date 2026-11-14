@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- **Script configurations** (like IntelliJ's Python / Shell Script): script path, options, interpreter, working directory and environment. Empty interpreter → chosen from the extension (`.py` → `venv/` or `.venv/` Python, else `python3`; `.sh` → `bash`; `.js` → `node`).
+- They run through an inline debug adapter (`script-run`): output in the Run window (Debug Console), typing there writes to the script's stdin, Stop ends the whole process group, and ▶ / ⌃R / Rerun / ⌘F2 work as for the other kinds.
+
 ## 0.3.2
 
 - The device button shows the device a run will really use: the one picked here, else the Flutter extension's device (polled, it has no change event), else *No device*.

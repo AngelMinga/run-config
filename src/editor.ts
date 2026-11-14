@@ -19,7 +19,7 @@ export interface EditorHooks {
 type Incoming =
   | { type: 'ready' }
   | { type: 'inspect'; id: string; config: RunConfig }
-  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager' | 'program'; current: string; folder: string }
+  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager' | 'program' | 'workingDir'; current: string; folder: string; kind?: string }
   | { type: 'save'; configs: StoredConfig[]; close: boolean; run?: { folder: string; name: string; debug: boolean }; selected?: { folder: string; name: string } }
   | { type: 'cancel' }
   | { type: 'openLaunch'; folder: string; name?: string }
@@ -41,6 +41,10 @@ function strings(): Record<string, string> {
     'An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.', 'Additional environment variables.',
     'The Dart and Flutter extensions are needed to run Flutter configurations.',
     'Additional attach args:', "Additional arguments to 'flutter attach'.",
+    'Script', 'Scripts', 'Script path:', 'Script options:', 'Interpreter:', 'Working directory:',
+    'Arguments passed to the script.', "Empty: the script's directory.",
+    'Empty: chosen from the extension (.py → Python of venv/.venv or python3, .sh → bash, .js → node).',
+    "Runs in the Run window (Debug Console). Type there to answer the script's prompts.",
   ];
   return Object.fromEntries(keys.map(k => [k, t(k)]));
 }
@@ -126,7 +130,7 @@ export class EditorPanel {
       case 'inspect': {
         const ctx = await this.runtimes.context();
         const c = m.config;
-        if (c.kind === 'flutter') { return; }
+        if (c.kind !== 'npm') { return; }
         const node = projectNode(c, ctx);
         const pmName = projectPackageManager(c.packageJson, c.folder);
         const effectiveNode = c.nodeRuntime || node.node?.path;
@@ -145,11 +149,15 @@ export class EditorPanel {
         const defaultUri = m.current
           ? vscode.Uri.file(m.field === 'packageJson' || m.field === 'program' ? path.dirname(m.current) : m.current)
           : vscode.Uri.file(m.folder || this.home);
+        const folderPick = m.field === 'workingDir';
         const picked = await vscode.window.showOpenDialog({
           defaultUri,
           canSelectMany: false,
+          canSelectFiles: !folderPick,
+          canSelectFolders: folderPick,
           openLabel: t('Select'),
-          filters: m.field === 'packageJson' ? { 'package.json': ['json'] } : m.field === 'program' ? { Dart: ['dart'] } : undefined,
+          filters: m.field === 'packageJson' ? { 'package.json': ['json'] }
+            : m.field === 'program' && m.kind !== 'script' ? { Dart: ['dart'] } : undefined,
         });
         if (picked?.[0]) {
           this.post({ type: 'browsed', field: m.field, value: picked[0].fsPath });
@@ -193,6 +201,10 @@ export class EditorPanel {
       seen.add(key);
       if (c.kind === 'flutter') {
         if (!c.program.trim()) { return t('Dart entrypoint is required.'); }
+        continue;
+      }
+      if (c.kind === 'script') {
+        if (!c.program.trim()) { return t('Script path is required.'); }
         continue;
       }
       if (c.packageManager && !/[\\/]/.test(c.packageManager) && !['npm', 'pnpm', 'yarn', 'bun'].includes(packageManagerName(c.packageManager))) {

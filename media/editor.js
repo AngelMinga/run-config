@@ -44,6 +44,7 @@
     launch: '<path d="M4 3.5v9l8-4.5z"/>',
     flutter: '<path d="M9.5 1.5 3 8l2 2 8.5-8.5zM9.5 7.5 6 11l3.5 3.5h4L10 11l3.5-3.5z" fill="currentColor" stroke="none"/>',
     chevron: '<path d="m4 6 4 4 4-4"/>',
+    script: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4 6 2.5 2L4 10M8 10.5h4"/>',
     folder: '<path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/>',
     refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v2.5h-2.5"/>',
     link: '<path d="M9 3h4v4M13 3 7.5 8.5M11.5 9.5V13h-8.5V4.5H6.5"/>',
@@ -68,9 +69,12 @@
   const KINDS = [
     { kind: 'npm', icon: 'pkg', cls: 'npm' },
     { kind: 'flutter', icon: 'flutter', cls: 'flutter' },
+    { kind: 'script', icon: 'script', cls: 'script' },
   ];
-  const kindOf = c => (c.kind === 'flutter' ? KINDS[1] : KINDS[0]);
-  const anchor = c => (c.kind === 'flutter' ? c.program : c.packageJson);
+  const kindOf = c => KINDS.find(k => k.kind === c.kind) || KINDS[0];
+  const anchor = c => (c.kind === 'npm' ? c.packageJson : c.program);
+  const kindLabel = k => t(k.kind === 'npm' ? 'npm' : k.kind === 'flutter' ? 'Flutter' : 'Script');
+  const groupLabel = k => t(k.kind === 'npm' ? 'npm' : k.kind === 'flutter' ? 'Flutter' : 'Scripts');
 
   function markDirty() {
     S.dirty = true;
@@ -81,7 +85,7 @@
   // ---------- inspection (scripts, "Project" node / package manager) ----------
   let inspectTimer;
   function requestInspect(c) {
-    if (c.kind === 'flutter') { return; }
+    if (c.kind !== 'npm') { return; }
     clearTimeout(inspectTimer);
     inspectTimer = setTimeout(() => {
       vscode.postMessage({ type: 'inspect', id: c.id, config: strip(c) });
@@ -124,7 +128,7 @@
       KINDS.map(k => h('button', {
         class: 'menu-item', role: 'menuitem',
         onclick: () => { closeAddMenu(); addConfig(k.kind); },
-      }, icon(k.icon, k.cls), t(k.kind === 'npm' ? 'npm' : 'Flutter'))));
+      }, icon(k.icon, k.cls), kindLabel(k))));
     // CSSOM is allowed by the CSP (inline style attributes are not).
     addMenu.style.top = `${r.bottom + 2}px`;
     addMenu.style.left = `${r.left}px`;
@@ -154,7 +158,7 @@
     for (const k of KINDS) {
       const group = S.configs.filter(c => kindOf(c) === k);
       if (!group.length) { continue; }
-      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon(k.icon, k.cls), t(k.kind === 'npm' ? 'npm' : 'Flutter')));
+      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon(k.icon, k.cls), groupLabel(k)));
       for (const c of group) {
       tree.append(h('div', {
         class: 'item' + (c.id === S.selectedId ? ' selected' : ''),
@@ -293,7 +297,7 @@
 
     const browseBtn = field => h('button', {
       class: 'browse', title: t('Browse…'), 'aria-label': t('Browse…'),
-      onclick: () => vscode.postMessage({ type: 'browse', field, current: c[field], folder: c.folder }),
+      onclick: () => vscode.postMessage({ type: 'browse', field, current: c[field], folder: c.folder, kind: c.kind }),
     }, '…');
 
     const folderRow = () => (S.folders.length > 1 ? row(t('Workspace folder:'), h('select', {
@@ -307,6 +311,29 @@
     const beforeRow = () => row(t('Before launch:'), [textInput(c, 'preLaunchTask', { list: 'dl-tasks', placeholder: t('VS Code task to run before launch (preLaunchTask)') }),
       datalist('dl-tasks', S.tasks)], { for: 'f-preLaunchTask' });
     const help = text => h('div', { class: 'help' }, text);
+
+    if (c.kind === 'script') {
+      formEl.append(top, hint, h('div', { class: 'panel' },
+        h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
+        folderRow(),
+        row(t('Script path:'), [textInput(c, 'program', {
+          path: true, onChange: () => {
+            const folder = folderFor(c.program, c.folder);
+            if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
+          },
+        }), browseBtn('program')], { for: 'f-program' }),
+        row(t('Script options:'), textInput(c, 'arguments'), { for: 'f-arguments' }),
+        help(t('Arguments passed to the script.')),
+        row(t('Interpreter:'), textInput(c, 'interpreter', { placeholder: 'python3' }), { for: 'f-interpreter' }),
+        help(t('Empty: chosen from the extension (.py → Python of venv/.venv or python3, .sh → bash, .js → node).')),
+        row(t('Working directory:'), [textInput(c, 'workingDir', { path: true }), browseBtn('workingDir')], { for: 'f-workingDir' }),
+        help(t("Empty: the script's directory.")),
+        envRow(t('Environment variables:')),
+        beforeRow(),
+        help(t("Runs in the Run window (Debug Console). Type there to answer the script's prompts.")),
+      ));
+      return;
+    }
 
     if (c.kind === 'flutter') {
       formEl.append(top, hint, h('div', { class: 'panel' },
@@ -402,7 +429,7 @@
     renderForm();
     renderFooter();
     const c = selected();
-    if (c && c.kind !== 'flutter' && !S.inspected[c.id]) { requestInspect(c); }
+    if (c && c.kind === 'npm' && !S.inspected[c.id]) { requestInspect(c); }
   }
 
   function uniqueName(base, folder) {
@@ -415,13 +442,14 @@
     const ref = selected();
     const folder = ref ? ref.folder : (S.folders[0] && S.folders[0].path) || '';
     const flutter = kind === 'flutter';
+    const script = kind === 'script';
     const entry = flutter && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
     const c = withId({
-      kind: flutter ? 'flutter' : 'npm',
-      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
+      kind: flutter ? 'flutter' : script ? 'script' : 'npm',
+      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
       packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
-      program: entry || '', runArgs: '', flavor: '', attachArgs: '',
+      program: entry || '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '',
     });
     S.configs.push(c);
     markDirty();

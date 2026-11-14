@@ -265,6 +265,7 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-off
 
 /* ---------- Flutter ---------- */
 .icon.flutter { color: #42a5f5; }
+.icon.script { color: var(--vscode-charts-green, #4caf50); }
 .help {
   color: var(--muted);
   font-size: 0.9em;

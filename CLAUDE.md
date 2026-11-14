@@ -2,7 +2,7 @@
 
 ## What it is
 
-VS Code extension that brings IntelliJ/WebStorm **run configurations** (npm and Flutter): status bar selector + Run/Debug/Stop, a "Run/Debug Configurations" webview dialog, Node.js runtime/package manager detection, IntelliJ shortcuts (`⌃R`, `⌃D`, `⌘F2`) and import from `.idea`. Published as `angelminga.run-configurations`. **Code, comments and docs are in English. User-facing text is localized**: `vscode.l10n.t` uses the English text as key → add new strings to `l10n/bundle.l10n.es.json`; every `%key%` of `package.json` goes to `package.nls.json` **and** `package.nls.es.json`. Strings used by `media/editor.js` are listed in `strings()` in `src/editor.ts`.
+VS Code extension that brings IntelliJ/WebStorm **run configurations** (npm, Flutter and scripts): status bar selector + Run/Debug/Stop, a "Run/Debug Configurations" webview dialog, Node.js runtime/package manager detection, IntelliJ shortcuts (`⌃R`, `⌃D`, `⌘F2`) and import from `.idea`. Published as `angelminga.run-configurations`. **Code, comments and docs are in English. User-facing text is localized**: `vscode.l10n.t` uses the English text as key → add new strings to `l10n/bundle.l10n.es.json`; every `%key%` of `package.json` goes to `package.nls.json` **and** `package.nls.es.json`. Strings used by `media/editor.js` are listed in `strings()` in `src/editor.ts`.
 
 ## Structure
 
@@ -14,6 +14,7 @@ src/
 ├── model.ts      # RunConfig ↔ launch.json entry, arg/env parsing, RunConfig → js-debug `node` launch   (pure)
 ├── project.ts    # "Project" node (.nvmrc/.node-version) and package manager (packageManager/lockfile)   (pure)
 ├── detect.ts     # node / npm / pnpm / yarn / bun discovery and `--version`                                (pure)
+├── scriptAdapter.ts # inline debug adapter for `script-run`: spawns the script, streams output, stdin from the console, kills the process group (no vscode import, unit tested)
 ├── devices.ts    # Flutter device selector: `flutter devices --machine` (≈15 s, cached + background refresh), emulators
 ├── flutter.ts    # flutter binary lookup, devices/emulators parsing                                        (pure)
 ├── intellij.ts   # `js.build_tools.npm` XML parsing, `.idea` / `.run` discovery                            (pure)
@@ -23,7 +24,7 @@ media/editor.js, editor.css   # dialog UI (opened in a floating window via workb
 
 ## How a configuration runs
 
-`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); `deviceId` = device picked in `DeviceService` (none → Dart-Code's own). *Flutter Attach* sets `attach: true` → `request: attach` with `attachArgs`; it never stops the running app and uses the key `folder::name::attach`. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
+`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); `deviceId` = device picked in `DeviceService` (none → Dart-Code's own). *Flutter Attach* sets `attach: true` → `request: attach` with `attachArgs`; it never stops the running app and uses the key `folder::name::attach`. `script-run` keeps its type: `buildScriptLaunch` resolves interpreter (`resolveInterpreter`: configured, else by extension, `.py` → `venv/`/`.venv/` Python), args, `cwd` (working dir or the script's) and env, and `ScriptDebugAdapter` (registered with `DebugAdapterInlineImplementation`) runs it. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
 
 ## Commands
 

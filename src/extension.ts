@@ -7,7 +7,8 @@ import { DeviceService } from './devices';
 import { deviceIcon } from './flutter';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
-import { anchorPath, buildFlutterLaunch, buildNodeLaunch, configKey, DEBUG_TYPE, FLUTTER_TYPE, fromLaunchEntry, RunConfig, toLaunchEntry } from './model';
+import { anchorPath, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, configKey, DEBUG_TYPE, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
+import { ScriptDebugAdapter } from './scriptAdapter';
 import { ancestors, flutterRoot, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
 import { ConfigStore, launchJsonPath, StoredConfig } from './store';
 
@@ -194,6 +195,36 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   }));
 
+  // ---------- debug type: script-run → inline adapter (Python, shell…) ----------
+  context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(SCRIPT_TYPE, {
+    provideDebugConfigurations: () => [{
+      type: SCRIPT_TYPE, request: 'launch', name: 'script', script: '${workspaceFolder}/script.py',
+    }],
+    resolveDebugConfiguration: async (folder, config) => {
+      if (config.type !== SCRIPT_TYPE || config.__resolvedScript) { return config; }
+      const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
+      const c = fromLaunchEntry(config, folderPath, home, true);
+      if (!c.name) { c.name = config.name || 'script'; }
+      if (!c.program || !fs.existsSync(c.program)) {
+        void showConfigError(t('Script not found: {0}', c.program || '—'), c);
+        return undefined;
+      }
+      if (c.workingDir && !fs.existsSync(c.workingDir)) {
+        void showConfigError(t('Working directory not found: {0}', c.workingDir), c);
+        return undefined;
+      }
+      if (!c.allowMultiple) {
+        await sessions.stop(configKey(c));
+      }
+      const launch = buildScriptLaunch(c, fs.existsSync);
+      if (config.noDebug) { launch.noDebug = true; }
+      return launch as vscode.DebugConfiguration;
+    },
+  }));
+  context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory(SCRIPT_TYPE, {
+    createDebugAdapterDescriptor: () => new vscode.DebugAdapterInlineImplementation(new ScriptDebugAdapter()),
+  }));
+
   const showConfigError = async (message: string, c: RunConfig) => {
     const edit = t('Edit Configuration');
     if (await vscode.window.showErrorMessage(message, edit) === edit) {
@@ -290,7 +321,7 @@ export function activate(context: vscode.ExtensionContext): void {
         items.push({ label: `$(cloud-download) ${t('Import {0} configuration(s) from IntelliJ', importable)}`, action: 'import' });
       }
     }
-    for (const [kind, title] of [['npm', 'npm'], ['flutter', 'Flutter']] as const) {
+    for (const [kind, title] of [['npm', 'npm'], ['flutter', 'Flutter'], ['script', t('Scripts')]] as const) {
       const group = all.filter(c => c.kind === kind);
       if (!group.length) { continue; }
       items.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
@@ -299,7 +330,9 @@ export function activate(context: vscode.ExtensionContext): void {
         const running = sessions.running(configKey(c)).length > 0;
         items.push({
           label: `$(${running ? 'debug-restart' : kindIcon(c.kind)}) ${c.name}`,
-          description: (c.kind === 'flutter' ? path.basename(c.program) : [c.command, c.scripts].filter(Boolean).join(' '))
+          description: (c.kind === 'flutter' ? path.basename(c.program)
+            : c.kind === 'script' ? [path.basename(c.program), c.arguments].filter(Boolean).join(' ')
+              : [c.command, c.scripts].filter(Boolean).join(' '))
             + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
           detail: running ? t('Running') : undefined,
           picked: same(sel),
@@ -389,7 +422,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const sameRun = (a: RunConfig, b: RunConfig) => a.kind === b.kind && a.folder === b.folder && (a.kind === 'flutter'
     ? a.program === b.program && a.runArgs === b.runArgs && a.flavor === b.flavor
-    : a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments);
+    : a.kind === 'script'
+      ? a.program === b.program && a.arguments === b.arguments && a.interpreter === b.interpreter
+      : a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments);
 
   const importIntellij = async (fromPrompt: boolean): Promise<number> => {
     const existing = store.list();
@@ -577,7 +612,7 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 function kindIcon(kind: RunConfig['kind']): string {
-  return kind === 'flutter' ? 'device-mobile' : 'package';
+  return kind === 'flutter' ? 'device-mobile' : kind === 'script' ? 'terminal' : 'package';
 }
 
 export function deactivate(): void {
