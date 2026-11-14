@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -79,6 +79,18 @@
         "command": "runConfigurations.refreshRuntimes",
         "title": "%command.refresh%",
         "category": "%category%"
+      },
+      {
+        "command": "runConfigurations.attach",
+        "title": "%command.attach%",
+        "category": "%category%",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "runConfigurations.selectDevice",
+        "title": "%command.selectDevice%",
+        "category": "%category%",
+        "icon": "$(device-mobile)"
       }
     ],
     "keybindings": [
@@ -117,6 +129,16 @@
         {
           "command": "runConfigurations.edit",
           "group": "1_runConfigurations@3"
+        },
+        {
+          "command": "runConfigurations.attach",
+          "group": "1_runConfigurations@2.5",
+          "when": "runConfigurations.flutterSelected"
+        },
+        {
+          "command": "runConfigurations.selectDevice",
+          "group": "2_flutter@1",
+          "when": "runConfigurations.flutterSelected"
         }
       ],
       "commandPalette": [
@@ -282,6 +304,23 @@
                 "type": "boolean",
                 "description": "%attr.allowMultiple%",
                 "default": false
+              },
+              "attachArgs": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.attachArgs%"
+              },
+              "deviceId": {
+                "type": "string",
+                "description": "%attr.deviceId%",
+                "examples": [
+                  "macos",
+                  "chrome",
+                  "ios",
+                  "emulator-5554"
+                ]
               }
             }
           }

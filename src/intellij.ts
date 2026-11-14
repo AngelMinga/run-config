@@ -73,6 +73,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
         program: macros(optionValue(body, 'filePath') || '$PROJECT_DIR$/lib/main.dart'),
         runArgs: optionValue(body, 'additionalArgs'),
         flavor: optionValue(body, 'buildFlavor'),
+        attachArgs: optionValue(body, 'attachArgs'),
         env,
       });
       continue;

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Flutter device selector (status bar, selector, editor run menu) from `flutter devices`, with *Open Emulator* and refresh; the chosen device is passed as `deviceId`.
+- *Flutter Attach* and *Additional attach args*, also imported from IntelliJ.
+
 ## 0.2.0
 
 - Flutter run configurations (Dart entrypoint, run args, build flavor, environment), run through the Dart extension; `flutter-run` launch type and import from IntelliJ.

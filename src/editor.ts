@@ -40,6 +40,7 @@ function strings(): Record<string, string> {
     'The entry-point for the application (e.g. lib/main.dart).', "Additional arguments to 'flutter run'.",
     'An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.', 'Additional environment variables.',
     'The Dart and Flutter extensions are needed to run Flutter configurations.',
+    'Additional attach args:', "Additional arguments to 'flutter attach'.",
   ];
   return Object.fromEntries(keys.map(k => [k, t(k)]));
 }

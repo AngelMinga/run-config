@@ -3,6 +3,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { detect, Detection } from './detect';
+import { DeviceService } from './devices';
+import { deviceIcon } from './flutter';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
 import { anchorPath, buildFlutterLaunch, buildNodeLaunch, configKey, DEBUG_TYPE, FLUTTER_TYPE, fromLaunchEntry, RunConfig, toLaunchEntry } from './model';
@@ -96,6 +98,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const store = new ConfigStore(context.workspaceState);
   const runtimes = new Runtimes();
   const sessions = new Sessions();
+  const devices = new DeviceService(context.workspaceState);
+  context.subscriptions.push(devices);
   context.subscriptions.push(store, sessions);
 
   // ---------- selection ----------
@@ -167,10 +171,14 @@ export function activate(context: vscode.ExtensionContext): void {
         void showConfigError(t('No pubspec.yaml found above {0}', c.program), c);
         return undefined;
       }
-      if (!c.allowMultiple) {
+      const attach = config.request === 'attach' || config.attach === true;
+      if (!c.allowMultiple && !attach) {
         await sessions.stop(configKey(c));
       }
-      const launch = buildFlutterLaunch(c, root);
+      const deviceId = typeof config.deviceId === 'string' && config.deviceId ? config.deviceId : devices.selected()?.id;
+      const launch = buildFlutterLaunch(c, root, { attach, deviceId });
+      // Attaching connects to the running app: never stop it, and track it apart from `flutter run`.
+      if (attach) { launch.__runConfigKey = `${configKey(c)}::attach`; }
       if (config.noDebug) { launch.noDebug = true; }
       return launch as vscode.DebugConfiguration;
     },
@@ -186,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // ---------- running ----------
   const wsFolder = (fsPath: string) => vscode.workspace.workspaceFolders?.find(f => f.uri.fsPath === fsPath);
 
-  const launch = async (sel: Selection | undefined, debug: boolean): Promise<void> => {
+  const launch = async (sel: Selection | undefined, debug: boolean, attach = false): Promise<void> => {
     if (!sel) {
       const picked = await pick();
       if (!picked) { return; }
@@ -205,7 +213,13 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage(t('Run configuration "{0}" no longer exists.', sel.name));
       return;
     }
-    await vscode.debug.startDebugging(wsFolder(c.folder), toLaunchEntry(c, home) as vscode.DebugConfiguration, options);
+    if (attach && c.kind !== 'flutter') {
+      void vscode.window.showWarningMessage(t('Attach is only available for Flutter configurations.'));
+      return;
+    }
+    const entry = { ...toLaunchEntry(c, home), ...(attach ? { attach: true } : {}) };
+    // Attach always runs with the debugger: there is nothing to run "without debugging".
+    await vscode.debug.startDebugging(wsFolder(c.folder), entry as vscode.DebugConfiguration, attach ? {} : options);
   };
 
   const launchCurrentFile = async (options: vscode.DebugSessionOptions) => {
@@ -251,6 +265,7 @@ export function activate(context: vscode.ExtensionContext): void {
   interface PickItem extends vscode.QuickPickItem { sel?: Selection; action?: 'edit' | 'import' | 'device' }
   const runButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('play'), tooltip: t('Run') };
   const debugButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('debug-alt'), tooltip: t('Debug') };
+  const attachButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('plug'), tooltip: t('Flutter Attach') };
 
   const pick = (): Promise<Selection | undefined> => new Promise(resolve => {
     const multiRoot = store.folders().length > 1;
@@ -273,7 +288,7 @@ export function activate(context: vscode.ExtensionContext): void {
           detail: running ? t('Running') : undefined,
           picked: same(sel),
           sel,
-          buttons: [runButton, debugButton],
+          buttons: c.kind === 'flutter' ? [runButton, debugButton, attachButton] : [runButton, debugButton],
         });
       }
     }
@@ -292,8 +307,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({ label: `$(file-code) ${t('Current File')}`, sel: { kind: 'currentFile' }, buttons: [runButton, debugButton] });
-    if (all.some(c => c.kind === 'flutter') && vscode.extensions.getExtension(DART_EXTENSION)) {
-      items.push({ label: `$(device-mobile) ${t('Select Flutter Device…')}`, action: 'device' });
+    if (all.some(c => c.kind === 'flutter')) {
+      const device = devices.selected();
+      items.push({
+        label: `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${t('Select Flutter Device…')}`,
+        description: device?.name ?? t("Flutter extension's device"),
+        action: 'device',
+      });
     }
     items.push({ label: `$(gear) ${t('Edit Configurations…')}`, action: 'edit' });
     items.push({ label: `$(cloud-download) ${t('Import from IntelliJ…')}`, action: 'import' });
@@ -314,13 +334,13 @@ export function activate(context: vscode.ExtensionContext): void {
       const sel = e.item.sel;
       finish(undefined);
       await setSelection(sel);
-      await launch(sel, e.button === debugButton);
+      await launch(sel, e.button === debugButton, e.button === attachButton);
     });
     qp.onDidAccept(async () => {
       const item = qp.selectedItems[0];
       if (item?.action === 'edit') { finish(undefined); openEditor(getSelection()); return; }
       if (item?.action === 'import') { finish(undefined); await importIntellij(false); return; }
-      if (item?.action === 'device') { finish(undefined); await vscode.commands.executeCommand('flutter.selectDevice'); return; }
+      if (item?.action === 'device') { finish(undefined); await devices.pick(); return; }
       if (item?.sel) { await setSelection(item.sel); finish(item.sel); }
     });
     qp.onDidHide(() => { finish(undefined); qp.dispose(); });
@@ -426,6 +446,10 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   // ---------- status bar ----------
+  const deviceItem = vscode.window.createStatusBarItem('runConfigurations.device', vscode.StatusBarAlignment.Left, 51);
+  deviceItem.name = t('Flutter Device');
+  deviceItem.command = 'runConfigurations.selectDevice';
+  context.subscriptions.push(deviceItem);
   const selector = vscode.window.createStatusBarItem('runConfigurations.selector', vscode.StatusBarAlignment.Left, 50);
   const runItem = vscode.window.createStatusBarItem('runConfigurations.run', vscode.StatusBarAlignment.Left, 49);
   const debugItem = vscode.window.createStatusBarItem('runConfigurations.debug', vscode.StatusBarAlignment.Left, 48);
@@ -451,10 +475,17 @@ export function activate(context: vscode.ExtensionContext): void {
     const selectedRunning = sel?.kind === 'npm' && sessions.running(configKey(sel)).length > 0;
     void vscode.commands.executeCommand('setContext', 'runConfigurations.running', sessions.any());
     void vscode.commands.executeCommand('setContext', 'runConfigurations.hasSelection', !!sel);
+    const flutterSelected = sel?.kind === 'npm' && store.find(sel.folder, sel.name)?.kind === 'flutter';
+    void vscode.commands.executeCommand('setContext', 'runConfigurations.flutterSelected', flutterSelected);
+    if (flutterSelected) { devices.warmUp(); }
     if (!show) {
-      [selector, runItem, debugItem, stopItem].forEach(i => i.hide());
+      [deviceItem, selector, runItem, debugItem, stopItem].forEach(i => i.hide());
       return;
     }
+    const device = devices.selected();
+    deviceItem.text = `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${device?.name ?? t('Flutter device')}`;
+    deviceItem.tooltip = t('Device for Flutter configurations');
+    if (flutterSelected) { deviceItem.show(); } else { deviceItem.hide(); }
     if (!sel) {
       selector.text = `$(gear) ${t('Add Configuration…')}`;
       selector.tooltip = t('No run configurations yet. Create one or import them from IntelliJ.');
@@ -480,6 +511,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     store.onDidChange(refreshUi),
+    devices.onDidChange(refreshUi),
     sessions.onDidChange(refreshUi),
     vscode.workspace.onDidChangeWorkspaceFolders(refreshUi),
     vscode.workspace.onDidChangeConfiguration(e => {
@@ -491,6 +523,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('runConfigurations.run', () => launch(getSelection(), false)),
     vscode.commands.registerCommand('runConfigurations.debug', () => launch(getSelection(), true)),
+    vscode.commands.registerCommand('runConfigurations.attach', () => launch(getSelection(), true, true)),
+    vscode.commands.registerCommand('runConfigurations.selectDevice', () => devices.pick()),
     vscode.commands.registerCommand('runConfigurations.stop', stop),
     vscode.commands.registerCommand('runConfigurations.select', async () => {
       if (!store.list().length && !store.others().length) {

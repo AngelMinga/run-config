@@ -322,6 +322,8 @@
         help(t('The entry-point for the application (e.g. lib/main.dart).')),
         row(t('Additional run args:'), textInput(c, 'runArgs'), { for: 'f-runArgs' }),
         help(t("Additional arguments to 'flutter run'.")),
+        row(t('Additional attach args:'), textInput(c, 'attachArgs'), { for: 'f-attachArgs' }),
+        help(t("Additional arguments to 'flutter attach'.")),
         row(t('Build flavor:'), textInput(c, 'flavor'), { for: 'f-flavor' }),
         help(t('An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.')),
         envRow(t('Environment variables:')),
@@ -419,7 +421,7 @@
       name: uniqueName(flutter ? baseName(entry) || 'main.dart' : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
       packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
-      program: entry || '', runArgs: '', flavor: '',
+      program: entry || '', runArgs: '', flavor: '', attachArgs: '',
     });
     S.configs.push(c);
     markDirty();

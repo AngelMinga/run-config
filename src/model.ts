@@ -43,6 +43,8 @@ export interface RunConfig {
   runArgs: string;
   /** Flutter: Gradle product flavor or Xcode scheme. */
   flavor: string;
+  /** Flutter: additional arguments to `flutter attach`. */
+  attachArgs: string;
 }
 
 export interface LaunchEntry {
@@ -71,6 +73,7 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     program: kind === 'flutter' ? path.join(folder, 'lib', 'main.dart') : '',
     runArgs: '',
     flavor: '',
+    attachArgs: '',
   };
 }
 
@@ -133,6 +136,7 @@ export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
     };
     if (c.runArgs) { entry.runArgs = c.runArgs; }
     if (c.flavor) { entry.flavor = c.flavor; }
+    if (c.attachArgs) { entry.attachArgs = c.attachArgs; }
     if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
     if (c.allowMultiple) { entry.allowMultipleInstances = true; }
     if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
@@ -176,6 +180,7 @@ export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home
       program: expand(str(e.program) || '${workspaceFolder}/lib/main.dart'),
       runArgs: Array.isArray(e.runArgs) ? e.runArgs.map(String).join(' ') : str(e.runArgs),
       flavor: str(e.flavor),
+      attachArgs: Array.isArray(e.attachArgs) ? e.attachArgs.map(String).join(' ') : str(e.attachArgs),
       env,
       preLaunchTask: str(e.preLaunchTask),
     };
@@ -310,20 +315,28 @@ export function buildNodeLaunch(
   return launch;
 }
 
-/** Builds the Dart-Code launch configuration that runs a Flutter configuration from `projectRoot` (pubspec.yaml dir). */
-export function buildFlutterLaunch(c: RunConfig, projectRoot: string): Record<string, unknown> {
-  const toolArgs = splitArgs(c.runArgs);
+export interface FlutterLaunchOptions {
+  /** `flutter attach` instead of `flutter run`. */
+  attach?: boolean;
+  /** Target device id (`macos`, `chrome`, `emulator-5554`…); undefined → Dart extension's selected device. */
+  deviceId?: string;
+}
+
+/** Builds the Dart-Code launch/attach configuration for a Flutter configuration from `projectRoot` (pubspec.yaml dir). */
+export function buildFlutterLaunch(c: RunConfig, projectRoot: string, options: FlutterLaunchOptions = {}): Record<string, unknown> {
+  const toolArgs = splitArgs(options.attach ? c.attachArgs : c.runArgs);
   if (c.flavor.trim()) {
     toolArgs.push('--flavor', c.flavor.trim());
   }
   const launch: Record<string, unknown> = {
     type: 'dart',
-    request: 'launch',
-    name: c.name,
+    request: options.attach ? 'attach' : 'launch',
+    name: options.attach ? `${c.name} (attach)` : c.name,
     cwd: projectRoot,
     program: c.program,
     __runConfigKey: configKey(c),
   };
+  if (options.deviceId) { launch.deviceId = options.deviceId; }
   if (toolArgs.length) { launch.toolArgs = toolArgs; }
   if (Object.keys(c.env).length) { launch.env = { ...c.env }; }
   if (c.preLaunchTask) { launch.preLaunchTask = c.preLaunchTask; }

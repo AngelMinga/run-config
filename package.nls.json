@@ -30,5 +30,9 @@
   "attr.flavor": "Build flavor: a Gradle product flavor or an Xcode custom scheme.",
   "snippet.flutter.label": "Flutter: Run Configuration (IntelliJ-style)",
   "snippet.flutter.description": "Runs a Flutter app through the Dart extension, with flavor and extra flutter run arguments.",
-  "settings.floatingDialog": "Open the Run/Debug Configurations dialog in its own floating window, like IntelliJ. Off: as an editor tab."
+  "settings.floatingDialog": "Open the Run/Debug Configurations dialog in its own floating window, like IntelliJ. Off: as an editor tab.",
+  "command.attach": "Flutter Attach",
+  "command.selectDevice": "Select Flutter Device…",
+  "attr.attachArgs": "Additional arguments to  (used by *Flutter Attach*).",
+  "attr.deviceId": "Device to run on. Empty: the device chosen with *Select Flutter Device…* (or the Dart extension's)."
 }

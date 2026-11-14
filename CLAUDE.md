@@ -14,6 +14,8 @@ src/
 ├── model.ts      # RunConfig ↔ launch.json entry, arg/env parsing, RunConfig → js-debug `node` launch   (pure)
 ├── project.ts    # "Project" node (.nvmrc/.node-version) and package manager (packageManager/lockfile)   (pure)
 ├── detect.ts     # node / npm / pnpm / yarn / bun discovery and `--version`                                (pure)
+├── devices.ts    # Flutter device selector: `flutter devices --machine` (≈15 s, cached + background refresh), emulators
+├── flutter.ts    # flutter binary lookup, devices/emulators parsing                                        (pure)
 ├── intellij.ts   # `js.build_tools.npm` XML parsing, `.idea` / `.run` discovery                            (pure)
 └── test/         # node:test unit tests for the pure modules
 media/editor.js, editor.css   # dialog UI (opened in a floating window via workbench.action.moveEditorToNewWindow), plain DOM, VS Code theme variables
@@ -21,7 +23,7 @@ media/editor.js, editor.css   # dialog UI (opened in a floating window via workb
 
 ## How a configuration runs
 
-`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); the device is Dart-Code's selected one. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
+`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); `deviceId` = device picked in `DeviceService` (none → Dart-Code's own). *Flutter Attach* sets `attach: true` → `request: attach` with `attachArgs`; it never stops the running app and uses the key `folder::name::attach`. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
 
 ## Commands
 
