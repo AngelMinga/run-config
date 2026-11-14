@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Run Configurations (estilo IntelliJ)",
-  "extension.description": "Configuraciones de ejecución npm al estilo IntelliJ/WebStorm: selector en la barra de estado, diálogo Run/Debug Configurations con los runtimes de Node.js y gestores de paquetes detectados, Ctrl+R para ejecutar e importación desde IntelliJ.",
+  "extension.description": "Configuraciones de ejecución al estilo IntelliJ/WebStorm para npm y Flutter: selector en la barra de estado, diálogo flotante Run/Debug Configurations con los runtimes de Node.js y gestores de paquetes detectados, Ctrl+R para ejecutar e importación desde IntelliJ.",
   "category": "Run Configurations",
   "command.run": "Ejecutar la configuración seleccionada",
   "command.debug": "Depurar la configuración seleccionada",
@@ -23,5 +23,12 @@
   "snippet.description": "Ejecuta un script de package.json con el runtime de Node.js y el gestor de paquetes elegidos.",
   "settings.defaultNodeRuntime": "Binario node que se usa cuando el **Runtime de Node** de una configuración es *Proyecto* y no hay `.nvmrc`/`.node-version`. Vacío: el `node` del PATH.",
   "settings.showStatusBar": "Mostrar el selector de configuración y los botones Ejecutar/Depurar/Detener en la barra de estado.",
-  "settings.offerIntellijImport": "Ofrecer importar las configuraciones npm de IntelliJ (`.idea/workspace.xml`, `.idea/runConfigurations`, `.run`) cuando el workspace no tenga ninguna."
+  "settings.offerIntellijImport": "Ofrecer importar las configuraciones npm de IntelliJ (`.idea/workspace.xml`, `.idea/runConfigurations`, `.run`) cuando el workspace no tenga ninguna.",
+  "debugger.flutter.label": "Flutter (configuración de ejecución)",
+  "attr.program": "Punto de entrada Dart de la aplicación (p. ej. lib/main.dart).",
+  "attr.runArgs": "Argumentos adicionales para .",
+  "attr.flavor": "Build flavor: un product flavor de Gradle o un scheme personalizado de Xcode.",
+  "snippet.flutter.label": "Flutter: configuración de ejecución (estilo IntelliJ)",
+  "snippet.flutter.description": "Ejecuta una app Flutter con la extensión de Dart, con flavor y argumentos adicionales de flutter run.",
+  "settings.floatingDialog": "Abrir el diálogo Run/Debug Configurations en su propia ventana flotante, como IntelliJ. Desactivado: como pestaña del editor."
 }

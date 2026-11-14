@@ -2,6 +2,14 @@ import * as path from 'node:path';
 
 /** Debug type contributed in package.json; resolved into a js-debug `node` launch. */
 export const DEBUG_TYPE = 'npm-run';
+/** Debug type contributed in package.json; resolved into a Dart-Code `dart` launch. */
+export const FLUTTER_TYPE = 'flutter-run';
+
+export type ConfigKind = 'npm' | 'flutter';
+
+export function isRunType(type: unknown): boolean {
+  return type === DEBUG_TYPE || type === FLUTTER_TYPE;
+}
 
 /** npm commands offered in the "Command" combo (same idea as IntelliJ's list). */
 export const NPM_COMMANDS = [
@@ -9,8 +17,9 @@ export const NPM_COMMANDS = [
   'update', 'outdated', 'audit', 'link', 'pack', 'publish', 'rebuild', 'prune', 'uninstall', 'version',
 ];
 
-/** One IntelliJ-style npm run configuration, as edited in the form (absolute paths). */
+/** One IntelliJ-style run configuration (npm or Flutter), as edited in the form (absolute paths). */
 export interface RunConfig {
+  kind: ConfigKind;
   name: string;
   /** Workspace folder (fsPath) the configuration belongs to. */
   folder: string;
@@ -28,6 +37,12 @@ export interface RunConfig {
   packageManager: string;
   env: Record<string, string>;
   preLaunchTask: string;
+  /** Flutter: Dart entrypoint (`lib/main.dart`). */
+  program: string;
+  /** Flutter: additional arguments to `flutter run`. */
+  runArgs: string;
+  /** Flutter: Gradle product flavor or Xcode scheme. */
+  flavor: string;
 }
 
 export interface LaunchEntry {
@@ -37,8 +52,9 @@ export interface LaunchEntry {
   [key: string]: unknown;
 }
 
-export function emptyConfig(folder: string, name: string): RunConfig {
+export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'npm'): RunConfig {
   return {
+    kind,
     name,
     folder,
     shared: false,
@@ -52,7 +68,25 @@ export function emptyConfig(folder: string, name: string): RunConfig {
     packageManager: '',
     env: {},
     preLaunchTask: '',
+    program: kind === 'flutter' ? path.join(folder, 'lib', 'main.dart') : '',
+    runArgs: '',
+    flavor: '',
   };
+}
+
+/** Fills fields missing in configurations saved by older versions. */
+export function normalize(c: Partial<RunConfig> & { folder: string; name: string }): RunConfig {
+  const base = emptyConfig(c.folder, c.name, c.kind ?? 'npm');
+  const out = { ...base, ...c, env: { ...(c.env ?? {}) } } as RunConfig;
+  for (const k of Object.keys(base) as (keyof RunConfig)[]) {
+    if (out[k] === undefined || out[k] === null) { (out as unknown as Record<string, unknown>)[k] = base[k]; }
+  }
+  return out;
+}
+
+/** The file that places a configuration in a project (package.json or the Dart entrypoint). */
+export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program'>): string {
+  return c.kind === 'flutter' ? c.program : c.packageJson;
 }
 
 export function configKey(c: { folder: string; name: string }): string {
@@ -90,6 +124,20 @@ export function portablePath(value: string, folder: string, home: string): strin
 }
 
 export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
+  if (c.kind === 'flutter') {
+    const entry: LaunchEntry = {
+      type: FLUTTER_TYPE,
+      request: 'launch',
+      name: c.name,
+      program: portablePath(c.program, c.folder, home),
+    };
+    if (c.runArgs) { entry.runArgs = c.runArgs; }
+    if (c.flavor) { entry.flavor = c.flavor; }
+    if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
+    if (c.allowMultiple) { entry.allowMultipleInstances = true; }
+    if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
+    return entry;
+  }
   const entry: LaunchEntry = {
     type: DEBUG_TYPE,
     request: 'launch',
@@ -120,7 +168,20 @@ export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home
   const scripts = Array.isArray(e.scripts) ? e.scripts.map(String).join(' ') : str(e.scripts);
   const args = Array.isArray(e.arguments) ? e.arguments.map(String).join(' ') : str(e.arguments);
   const expand = (v: string) => (v ? expandVars(v, folder, home) : v);
+  if (e.type === FLUTTER_TYPE) {
+    return {
+      ...emptyConfig(folder, str(e.name), 'flutter'),
+      shared,
+      allowMultiple: e.allowMultipleInstances === true,
+      program: expand(str(e.program) || '${workspaceFolder}/lib/main.dart'),
+      runArgs: Array.isArray(e.runArgs) ? e.runArgs.map(String).join(' ') : str(e.runArgs),
+      flavor: str(e.flavor),
+      env,
+      preLaunchTask: str(e.preLaunchTask),
+    };
+  }
   return {
+    ...emptyConfig(folder, str(e.name)),
     name: str(e.name),
     folder,
     shared,
@@ -246,6 +307,26 @@ export function buildNodeLaunch(
   if (c.preLaunchTask) {
     launch.preLaunchTask = c.preLaunchTask;
   }
+  return launch;
+}
+
+/** Builds the Dart-Code launch configuration that runs a Flutter configuration from `projectRoot` (pubspec.yaml dir). */
+export function buildFlutterLaunch(c: RunConfig, projectRoot: string): Record<string, unknown> {
+  const toolArgs = splitArgs(c.runArgs);
+  if (c.flavor.trim()) {
+    toolArgs.push('--flavor', c.flavor.trim());
+  }
+  const launch: Record<string, unknown> = {
+    type: 'dart',
+    request: 'launch',
+    name: c.name,
+    cwd: projectRoot,
+    program: c.program,
+    __runConfigKey: configKey(c),
+  };
+  if (toolArgs.length) { launch.toolArgs = toolArgs; }
+  if (Object.keys(c.env).length) { launch.env = { ...c.env }; }
+  if (c.preLaunchTask) { launch.preLaunchTask = c.preLaunchTask; }
   return launch;
 }
 

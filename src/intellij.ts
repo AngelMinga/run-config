@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { RunConfig } from './model';
+import { emptyConfig, RunConfig } from './model';
 
-/** Fields of an IntelliJ `js.build_tools.npm` configuration (absolute paths). */
+/** Fields of an IntelliJ npm (`js.build_tools.npm`) or Flutter (`FlutterRunConfigurationType`) configuration. */
 export type ImportedConfig = Omit<RunConfig, 'folder' | 'shared'> & {
   /** Directory that contains `.idea` / `.run` (IntelliJ's `$PROJECT_DIR$`). */
   projectDir: string;
@@ -30,12 +30,20 @@ function attrs(tag: string): Record<string, string> {
   return out;
 }
 
+function optionValue(body: string, name: string): string {
+  for (const m of body.matchAll(/<option\b([^>]*?)\/?>/g)) {
+    const a = attrs(m[1]);
+    if (a.name === name) { return a.value ?? ''; }
+  }
+  return '';
+}
+
 function childValue(body: string, tag: string): string {
   const m = new RegExp(`<${tag}\\b([^>]*?)/?>`).exec(body);
   return m ? attrs(m[1]).value ?? '' : '';
 }
 
-/** Parses every non-template npm run configuration in an IntelliJ XML file. */
+/** Parses every non-template npm and Flutter run configuration in an IntelliJ XML file. */
 export function parseIntellijXml(xml: string, projectDir: string, home: string, shared: boolean, source = ''): ImportedConfig[] {
   const macros = (v: string) => v
     .replace(/\$PROJECT_DIR\$/g, projectDir)
@@ -44,7 +52,8 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
   const out: ImportedConfig[] = [];
   for (const m of xml.matchAll(/<configuration\b([^>]*?)(\/>|>([\s\S]*?)<\/configuration>)/g)) {
     const a = attrs(m[1]);
-    if (a.type !== 'js.build_tools.npm' || a.default === 'true' || !a.name) {
+    const flutter = a.type === 'FlutterRunConfigurationType';
+    if ((a.type !== 'js.build_tools.npm' && !flutter) || a.default === 'true' || !a.name) {
       continue;
     }
     const body = m[3] ?? '';
@@ -54,10 +63,24 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
       const ea = attrs(e[1]);
       if (ea.name) { env[ea.name] = ea.value ?? ''; }
     }
+    if (flutter) {
+      out.push({
+        ...emptyConfig(projectDir, a.name, 'flutter'),
+        projectDir,
+        shared,
+        source,
+        allowMultiple: a.allowRunningInParallel === 'true',
+        program: macros(optionValue(body, 'filePath') || '$PROJECT_DIR$/lib/main.dart'),
+        runArgs: optionValue(body, 'additionalArgs'),
+        flavor: optionValue(body, 'buildFlavor'),
+        env,
+      });
+      continue;
+    }
     const node = childValue(body, 'node-interpreter');
     const pm = childValue(body, 'package-manager');
     out.push({
-      name: a.name,
+      ...emptyConfig(projectDir, a.name),
       projectDir,
       shared,
       source,

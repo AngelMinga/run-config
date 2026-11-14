@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as jsonc from 'jsonc-parser';
 import * as vscode from 'vscode';
-import { DEBUG_TYPE, fromLaunchEntry, RunConfig, toLaunchEntry } from './model';
+import { fromLaunchEntry, isRunType, normalize, RunConfig, toLaunchEntry } from './model';
 
 const LOCAL_KEY = 'runConfigurations.local';
 
@@ -60,12 +60,12 @@ export class ConfigStore implements vscode.Disposable {
     return (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
   }
 
-  /** npm configurations: launch.json ones (per folder, in file order) then private ones. */
+  /** Run configurations (npm and Flutter): launch.json ones (per folder, in file order) then private ones. */
   list(): StoredConfig[] {
     const out: StoredConfig[] = [];
     for (const folder of this.folders()) {
       for (const e of readLaunch(folder).data.configurations ?? []) {
-        if (isEntry(e) && e.type === DEBUG_TYPE && typeof e.name === 'string') {
+        if (isEntry(e) && isRunType(e.type) && typeof e.name === 'string') {
           const c = fromLaunchEntry(e, folder, this.home, true);
           out.push({ ...c, origin: { folder, name: c.name, shared: true } });
         }
@@ -74,7 +74,7 @@ export class ConfigStore implements vscode.Disposable {
     const folders = this.folders();
     for (const c of this.state.get<RunConfig[]>(LOCAL_KEY, [])) {
       if (folders.includes(c.folder)) {
-        out.push({ ...c, env: { ...c.env }, origin: { folder: c.folder, name: c.name, shared: false } });
+        out.push({ ...normalize(c), origin: { folder: c.folder, name: c.name, shared: false } });
       }
     }
     return out;
@@ -85,7 +85,7 @@ export class ConfigStore implements vscode.Disposable {
     for (const folder of this.folders()) {
       const { data } = readLaunch(folder);
       for (const e of data.configurations ?? []) {
-        if (isEntry(e) && e.type !== DEBUG_TYPE && typeof e.name === 'string') {
+        if (isEntry(e) && !isRunType(e.type) && typeof e.name === 'string') {
           out.push({ folder, name: e.name, type: String(e.type ?? ''), compound: false });
         }
       }
@@ -143,7 +143,7 @@ export class ConfigStore implements vscode.Disposable {
     const current = entries();
     for (let i = current.length - 1; i >= 0; i--) {
       const e = current[i];
-      if (isEntry(e) && e.type === DEBUG_TYPE && !kept.has(String(e.name))) {
+      if (isEntry(e) && isRunType(e.type) && !kept.has(String(e.name))) {
         apply(['configurations', i], undefined);
       }
     }
@@ -152,7 +152,7 @@ export class ConfigStore implements vscode.Disposable {
     const placed = wanted.map(c => ({
       c,
       index: c.origin?.shared && c.origin.folder === folder
-        ? list.findIndex(e => isEntry(e) && e.type === DEBUG_TYPE && e.name === c.origin!.name)
+        ? list.findIndex(e => isEntry(e) && isRunType(e.type) && e.name === c.origin!.name)
         : -1,
     }));
     for (const { c, index } of placed) {

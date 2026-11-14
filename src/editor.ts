@@ -19,7 +19,7 @@ export interface EditorHooks {
 type Incoming =
   | { type: 'ready' }
   | { type: 'inspect'; id: string; config: RunConfig }
-  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager'; current: string; folder: string }
+  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager' | 'program'; current: string; folder: string }
   | { type: 'save'; configs: StoredConfig[]; close: boolean; run?: { folder: string; name: string; debug: boolean }; selected?: { folder: string; name: string } }
   | { type: 'cancel' }
   | { type: 'openLaunch'; folder: string; name?: string }
@@ -36,6 +36,10 @@ function strings(): Record<string, string> {
     'Edit in launch.json', 'No run configurations. Click + to add one.', 'Name is required.',
     'A configuration named "{0}" already exists in this folder.', 'Unnamed', 'Saved in .vscode/launch.json (shared with the team).',
     'Saved privately in this workspace (not committed).', 'Scripts from package.json', 'Running',
+    'npm', 'Flutter', 'Dart entrypoint:', 'Additional run args:', 'Build flavor:', 'Environment variables:',
+    'The entry-point for the application (e.g. lib/main.dart).', "Additional arguments to 'flutter run'.",
+    'An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.', 'Additional environment variables.',
+    'The Dart and Flutter extensions are needed to run Flutter configurations.',
   ];
   return Object.fromEntries(keys.map(k => [k, t(k)]));
 }
@@ -67,6 +71,10 @@ export class EditorPanel {
       vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [media] });
     this.panel.webview.html = this.html(media);
     this.panel.onDidDispose(() => { EditorPanel.current = undefined; });
+    if (vscode.workspace.getConfiguration('runConfigurations').get<boolean>('floatingDialog', true)) {
+      // Like IntelliJ's dialog: its own window. The window closes with the panel (OK / Cancel).
+      void Promise.resolve(vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow')).catch(() => undefined);
+    }
     this.panel.webview.onDidReceiveMessage((m: Incoming) => this.onMessage(m).catch(err => {
       void vscode.window.showErrorMessage(String(err instanceof Error ? err.message : err));
     }));
@@ -78,13 +86,19 @@ export class EditorPanel {
 
   private async sendInit(): Promise<void> {
     const folders = this.store.folders().map(f => ({ path: f, name: path.basename(f) }));
-    const pkgUris = await vscode.workspace.findFiles('**/package.json', '**/{node_modules,.git,dist,build,out}/**', 300);
+    const exclude = '**/{node_modules,.git,dist,build,out,.dart_tool,ios,android,macos,windows,linux,web}/**';
+    const [pkgUris, dartUris] = await Promise.all([
+      vscode.workspace.findFiles('**/package.json', exclude, 300),
+      vscode.workspace.findFiles('**/lib/main*.dart', exclude, 100),
+    ]);
     this.post({
       type: 'init',
       configs: this.store.list(),
       others: this.store.others(),
       folders,
       packageJsons: pkgUris.map(u => u.fsPath).sort(),
+      dartEntrypoints: dartUris.map(u => u.fsPath).sort(),
+      hasDart: !!vscode.extensions.getExtension('Dart-Code.dart-code'),
       commands: NPM_COMMANDS,
       home: this.home,
       sep: path.sep,
@@ -111,6 +125,7 @@ export class EditorPanel {
       case 'inspect': {
         const ctx = await this.runtimes.context();
         const c = m.config;
+        if (c.kind === 'flutter') { return; }
         const node = projectNode(c, ctx);
         const pmName = projectPackageManager(c.packageJson, c.folder);
         const effectiveNode = c.nodeRuntime || node.node?.path;
@@ -127,13 +142,13 @@ export class EditorPanel {
       }
       case 'browse': {
         const defaultUri = m.current
-          ? vscode.Uri.file(m.field === 'packageJson' ? path.dirname(m.current) : m.current)
+          ? vscode.Uri.file(m.field === 'packageJson' || m.field === 'program' ? path.dirname(m.current) : m.current)
           : vscode.Uri.file(m.folder || this.home);
         const picked = await vscode.window.showOpenDialog({
           defaultUri,
           canSelectMany: false,
           openLabel: t('Select'),
-          filters: m.field === 'packageJson' ? { 'package.json': ['json'] } : undefined,
+          filters: m.field === 'packageJson' ? { 'package.json': ['json'] } : m.field === 'program' ? { Dart: ['dart'] } : undefined,
         });
         if (picked?.[0]) {
           this.post({ type: 'browsed', field: m.field, value: picked[0].fsPath });
@@ -175,6 +190,10 @@ export class EditorPanel {
       const key = configKey(c);
       if (seen.has(key)) { return t('A configuration named "{0}" already exists in this folder.', c.name); }
       seen.add(key);
+      if (c.kind === 'flutter') {
+        if (!c.program.trim()) { return t('Dart entrypoint is required.'); }
+        continue;
+      }
       if (c.packageManager && !/[\\/]/.test(c.packageManager) && !['npm', 'pnpm', 'yarn', 'bun'].includes(packageManagerName(c.packageManager))) {
         return t('Unknown package manager "{0}".', c.packageManager);
       }

@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -27,13 +27,16 @@
     "pnpm",
     "yarn",
     "nvm",
-    "launch"
+    "launch",
+    "flutter",
+    "dart"
   ],
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "activationEvents": [
     "onStartupFinished",
-    "onDebugResolve:npm-run"
+    "onDebugResolve:npm-run",
+    "onDebugResolve:flutter-run"
   ],
   "contributes": {
     "commands": [
@@ -236,6 +239,73 @@
             }
           }
         ]
+      },
+      {
+        "type": "flutter-run",
+        "label": "%debugger.flutter.label%",
+        "languages": [
+          "dart"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "%attr.program%",
+                "default": "${workspaceFolder}/lib/main.dart"
+              },
+              "runArgs": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.runArgs%"
+              },
+              "flavor": {
+                "type": "string",
+                "description": "%attr.flavor%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "flutter-run",
+            "request": "launch",
+            "name": "main.dart",
+            "program": "^\"\\${workspaceFolder}/lib/main.dart\""
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%snippet.flutter.label%",
+            "description": "%snippet.flutter.description%",
+            "body": {
+              "type": "flutter-run",
+              "request": "launch",
+              "name": "${1:main.dart}",
+              "program": "^\"\\${workspaceFolder}/${2:lib/main.dart}\""
+            }
+          }
+        ]
       }
     ],
     "configuration": {
@@ -256,6 +326,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%settings.offerIntellijImport%"
+        },
+        "runConfigurations.floatingDialog": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.floatingDialog%"
         }
       }
     }

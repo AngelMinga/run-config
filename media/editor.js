@@ -4,7 +4,7 @@
   const vscode = acquireVsCodeApi();
 
   const S = {
-    configs: [], others: [], folders: [], packageJsons: [], commands: [], tasks: [],
+    configs: [], others: [], folders: [], packageJsons: [], dartEntrypoints: [], hasDart: true, commands: [], tasks: [],
     home: '', sep: '/', strings: {}, detection: null, inspected: {},
     selectedId: null, dirty: false, error: '', nextId: 1,
   };
@@ -42,6 +42,7 @@
     debug: '<path d="M5.5 6.5a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-5 0zM8 6.5v6M3 8.5h2.5M10.5 8.5H13M3.5 5l2 1.5M12.5 5l-2 1.5M3.5 12.5l2-1.5M12.5 12.5l-2-1.5M6 4.5 5 3M10 4.5l1-1.5"/>',
     pkg: '<path d="M2.5 5 8 2.5 13.5 5v6L8 13.5 2.5 11z"/><path d="M2.5 5 8 7.5 13.5 5M8 7.5v6"/>',
     launch: '<path d="M4 3.5v9l8-4.5z"/>',
+    flutter: '<path d="M9.5 1.5 3 8l2 2 8.5-8.5zM9.5 7.5 6 11l3.5 3.5h4L10 11l3.5-3.5z" fill="currentColor" stroke="none"/>',
     chevron: '<path d="m4 6 4 4 4-4"/>',
     folder: '<path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/>',
     refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v2.5h-2.5"/>',
@@ -64,6 +65,13 @@
     return best || fallback || (S.folders[0] && S.folders[0].path) || '';
   }
 
+  const KINDS = [
+    { kind: 'npm', icon: 'pkg', cls: 'npm' },
+    { kind: 'flutter', icon: 'flutter', cls: 'flutter' },
+  ];
+  const kindOf = c => (c.kind === 'flutter' ? KINDS[1] : KINDS[0]);
+  const anchor = c => (c.kind === 'flutter' ? c.program : c.packageJson);
+
   function markDirty() {
     S.dirty = true;
     S.error = '';
@@ -73,6 +81,7 @@
   // ---------- inspection (scripts, "Project" node / package manager) ----------
   let inspectTimer;
   function requestInspect(c) {
+    if (c.kind === 'flutter') { return; }
     clearTimeout(inspectTimer);
     inspectTimer = setTimeout(() => {
       vscode.postMessage({ type: 'inspect', id: c.id, config: strip(c) });
@@ -103,31 +112,61 @@
     return h('button', { class: 'tool', title, 'aria-label': title, onclick, disabled }, icon(name));
   }
 
+  let addMenu;
+  function closeAddMenu() {
+    if (addMenu) { addMenu.remove(); addMenu = undefined; }
+  }
+  function toggleAddMenu(button) {
+    if (addMenu) { closeAddMenu(); return; }
+    const r = button.getBoundingClientRect();
+    addMenu = h('div', { class: 'menu', role: 'menu' },
+      h('div', { class: 'menu-title' }, t('Add New Configuration')),
+      KINDS.map(k => h('button', {
+        class: 'menu-item', role: 'menuitem',
+        onclick: () => { closeAddMenu(); addConfig(k.kind); },
+      }, icon(k.icon, k.cls), t(k.kind === 'npm' ? 'npm' : 'Flutter'))));
+    // CSSOM is allowed by the CSP (inline style attributes are not).
+    addMenu.style.top = `${r.bottom + 2}px`;
+    addMenu.style.left = `${r.left}px`;
+    document.body.append(addMenu);
+    addMenu.querySelector('button').focus();
+  }
+  document.addEventListener('mousedown', e => {
+    if (addMenu && !addMenu.contains(e.target) && !e.target.closest('.tool')) { closeAddMenu(); }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeAddMenu(); }
+  });
+
   function renderSidebar() {
     sidebarEl.textContent = '';
     const sel = selected();
     sidebarEl.append(h('div', { class: 'toolbar' },
-      toolButton('add', t('Add New Configuration'), addConfig),
+      toolButton('add', t('Add New Configuration'), e => toggleAddMenu(e.currentTarget)),
       toolButton('remove', t('Remove Configuration'), removeConfig, !sel),
       toolButton('copy', t('Copy Configuration'), copyConfig, !sel),
     ));
     const tree = h('div', { class: 'tree', role: 'tree' });
     const multi = S.folders.length > 1;
-    tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon('pkg', 'npm'), 'npm'));
     if (!S.configs.length) {
       tree.append(h('div', { class: 'empty' }, t('No run configurations. Click + to add one.')));
     }
-    for (const c of S.configs) {
+    for (const k of KINDS) {
+      const group = S.configs.filter(c => kindOf(c) === k);
+      if (!group.length) { continue; }
+      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon(k.icon, k.cls), t(k.kind === 'npm' ? 'npm' : 'Flutter')));
+      for (const c of group) {
       tree.append(h('div', {
         class: 'item' + (c.id === S.selectedId ? ' selected' : ''),
         role: 'treeitem',
         tabindex: '0',
-        title: c.packageJson,
+        title: anchor(c),
         onclick: () => selectConfig(c.id),
         onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { selectConfig(c.id); } },
-      }, icon('pkg', 'npm'), h('span', { class: 'label' }, c.name || t('Unnamed')),
+      }, icon(k.icon, k.cls), h('span', { class: 'label' }, c.name || t('Unnamed')),
       multi ? h('span', { class: 'desc' }, baseName(c.folder)) : null,
       c.shared ? h('span', { class: 'badge', title: t('Store as project file') }, 'launch.json') : null));
+      }
     }
     if (S.others.length) {
       tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon('launch'), t('Other launch.json configurations')));
@@ -257,12 +296,44 @@
       onclick: () => vscode.postMessage({ type: 'browse', field, current: c[field], folder: c.folder }),
     }, '…');
 
+    const folderRow = () => (S.folders.length > 1 ? row(t('Workspace folder:'), h('select', {
+      id: 'f-folder',
+      onchange: e => { c.folder = e.target.value; markDirty(); renderSidebar(); },
+    }, S.folders.map(f => h('option', { value: f.path, selected: f.path === c.folder }, f.name))), { for: 'f-folder' }) : null);
+    const envRow = label => row(label, h('textarea', {
+      id: 'f-env', rows: '3', spellcheck: 'false', placeholder: t('One KEY=value per line'),
+      oninput: e => { c.env = parseEnv(e.target.value); markDirty(); },
+    }, formatEnv(c.env)), { for: 'f-env', cls: 'top-align' });
+    const beforeRow = () => row(t('Before launch:'), [textInput(c, 'preLaunchTask', { list: 'dl-tasks', placeholder: t('VS Code task to run before launch (preLaunchTask)') }),
+      datalist('dl-tasks', S.tasks)], { for: 'f-preLaunchTask' });
+    const help = text => h('div', { class: 'help' }, text);
+
+    if (c.kind === 'flutter') {
+      formEl.append(top, hint, h('div', { class: 'panel' },
+        h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
+        S.hasDart ? null : h('div', { class: 'warning' }, t('The Dart and Flutter extensions are needed to run Flutter configurations.')),
+        folderRow(),
+        row(t('Dart entrypoint:'), [textInput(c, 'program', {
+          path: true, list: 'dl-dart', onChange: () => {
+            const folder = folderFor(c.program, c.folder);
+            if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
+          },
+        }), browseBtn('program'), datalist('dl-dart', S.dartEntrypoints.map(tilde))], { for: 'f-program' }),
+        help(t('The entry-point for the application (e.g. lib/main.dart).')),
+        row(t('Additional run args:'), textInput(c, 'runArgs'), { for: 'f-runArgs' }),
+        help(t("Additional arguments to 'flutter run'.")),
+        row(t('Build flavor:'), textInput(c, 'flavor'), { for: 'f-flavor' }),
+        help(t('An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.')),
+        envRow(t('Environment variables:')),
+        help(t('Additional environment variables.')),
+        beforeRow(),
+      ));
+      return;
+    }
+
     const panel = h('div', { class: 'panel' },
       h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
-      S.folders.length > 1 ? row(t('Workspace folder:'), h('select', {
-        id: 'f-folder',
-        onchange: e => { c.folder = e.target.value; markDirty(); renderSidebar(); },
-      }, S.folders.map(f => h('option', { value: f.path, selected: f.path === c.folder }, f.name))), { for: 'f-folder' }) : null,
+      folderRow(),
       row(t('package.json:'), [textInput(c, 'packageJson', {
         path: true, list: 'dl-pkg', onChange: () => {
           const folder = folderFor(c.packageJson, c.folder);
@@ -280,12 +351,8 @@
       { for: 'f-nodeRuntime' }),
       row(t('Node options:'), textInput(c, 'nodeOptions'), { for: 'f-nodeOptions' }),
       row(t('Package manager:'), runtimeSelect(c, 'packageManager', pmOptions), { for: 'f-packageManager' }),
-      row(t('Environment:'), h('textarea', {
-        id: 'f-env', rows: '3', spellcheck: 'false', placeholder: t('One KEY=value per line'),
-        oninput: e => { c.env = parseEnv(e.target.value); markDirty(); },
-      }, formatEnv(c.env)), { for: 'f-env', cls: 'top-align' }),
-      row(t('Before launch:'), [textInput(c, 'preLaunchTask', { list: 'dl-tasks', placeholder: t('VS Code task to run before launch (preLaunchTask)') }),
-        datalist('dl-tasks', S.tasks)], { for: 'f-preLaunchTask' }),
+      envRow(t('Environment:')),
+      beforeRow(),
     );
     formEl.append(top, hint, panel);
   }
@@ -333,7 +400,7 @@
     renderForm();
     renderFooter();
     const c = selected();
-    if (c && !S.inspected[c.id]) { requestInspect(c); }
+    if (c && c.kind !== 'flutter' && !S.inspected[c.id]) { requestInspect(c); }
   }
 
   function uniqueName(base, folder) {
@@ -342,13 +409,17 @@
     for (let i = 2; ; i++) { if (!taken(`${base} (${i})`)) { return `${base} (${i})`; } }
   }
 
-  function addConfig() {
+  function addConfig(kind) {
     const ref = selected();
     const folder = ref ? ref.folder : (S.folders[0] && S.folders[0].path) || '';
+    const flutter = kind === 'flutter';
+    const entry = flutter && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
     const c = withId({
-      name: uniqueName(t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
+      kind: flutter ? 'flutter' : 'npm',
+      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
       packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
+      program: entry || '', runArgs: '', flavor: '',
     });
     S.configs.push(c);
     markDirty();
@@ -395,6 +466,7 @@
       case 'init': {
         Object.assign(S, {
           configs: m.configs.map(withId), others: m.others, folders: m.folders, packageJsons: m.packageJsons,
+          dartEntrypoints: m.dartEntrypoints || [], hasDart: m.hasDart !== false,
           commands: m.commands, home: m.home, sep: m.sep, strings: m.strings, dirty: false, error: '', inspected: {},
         });
         const pre = m.selected && S.configs.find(c => c.folder === m.selected.folder && c.name === m.selected.name);
@@ -420,7 +492,7 @@
         const c = selected();
         if (!c) { break; }
         c[m.field] = m.value;
-        if (m.field === 'packageJson') { c.folder = folderFor(m.value, c.folder); }
+        if (m.field === 'packageJson' || m.field === 'program') { c.folder = folderFor(m.value, c.folder); }
         markDirty();
         requestInspect(c);
         renderSidebar();

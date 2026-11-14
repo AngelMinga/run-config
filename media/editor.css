@@ -262,3 +262,57 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-off
   .row > label { width: 92px; }
   .hint { margin-left: 0; }
 }
+
+/* ---------- Flutter ---------- */
+.icon.flutter { color: #42a5f5; }
+.help {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin: -2px 0 8px 116px;
+}
+.warning {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-radius: 3px;
+  background: var(--vscode-inputValidation-warningBackground);
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+}
+
+/* ---------- "Add New Configuration" menu ---------- */
+.menu {
+  position: fixed;
+  z-index: 10;
+  min-width: 200px;
+  padding: 4px;
+  border-radius: 4px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--border));
+  box-shadow: 0 4px 12px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.35));
+}
+.menu-title {
+  padding: 4px 8px 6px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  border-radius: 3px;
+}
+.menu-item:hover, .menu-item:focus {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-list-activeSelectionForeground));
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .help { margin-left: 0; }
+}

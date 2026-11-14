@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  buildNodeLaunch, commandLine, emptyConfig, expandVars, fromLaunchEntry, packageManagerName, parseEnv,
+  buildFlutterLaunch, buildNodeLaunch, commandLine, emptyConfig, expandVars, fromLaunchEntry, normalize, packageManagerName, parseEnv,
   portablePath, splitArgs, toLaunchEntry,
 } from '../model';
 
@@ -92,4 +92,36 @@ test('buildNodeLaunch uses the Windows Path key', () => {
   const launch = buildNodeLaunch(c, { node: 'C:\\nvm\\v24\\node.exe', packageManager: 'npm' }, { Path: 'C:\\Windows' }, 'win32');
   const env = launch.env as Record<string, string>;
   assert.ok(env.Path.endsWith(';C:\\Windows'));
+});
+
+test('flutter configurations round-trip and build a Dart-Code launch', () => {
+  const c = {
+    ...emptyConfig(folder, 'main.dart', 'flutter'),
+    shared: true,
+    program: `${folder}/mobile/lib/main_dev.dart`,
+    runArgs: '--dart-define=ENV=dev',
+    flavor: 'dev',
+    env: { A: '1' },
+  };
+  const entry = toLaunchEntry(c, home);
+  assert.deepEqual(entry, {
+    type: 'flutter-run', request: 'launch', name: 'main.dart',
+    program: '${workspaceFolder}/mobile/lib/main_dev.dart', runArgs: '--dart-define=ENV=dev', flavor: 'dev', env: { A: '1' },
+  });
+  assert.deepEqual(fromLaunchEntry(entry, folder, home, true), c);
+
+  const launch = buildFlutterLaunch(c, `${folder}/mobile`);
+  assert.deepEqual(launch, {
+    type: 'dart', request: 'launch', name: 'main.dart', cwd: `${folder}/mobile`, program: c.program,
+    toolArgs: ['--dart-define=ENV=dev', '--flavor', 'dev'], env: { A: '1' }, __runConfigKey: `${folder}::main.dart`,
+  });
+});
+
+test('normalize fills fields of configurations saved by older versions', () => {
+  const old = { name: 'x', folder, packageJson: `${folder}/package.json`, command: 'start' } as Parameters<typeof normalize>[0];
+  const c = normalize(old);
+  assert.equal(c.kind, 'npm');
+  assert.equal(c.command, 'start');
+  assert.equal(c.runArgs, '');
+  assert.deepEqual(c.env, {});
 });

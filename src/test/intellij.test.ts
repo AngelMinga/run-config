@@ -33,14 +33,25 @@ const WORKSPACE = `<?xml version="1.0" encoding="UTF-8"?>
     <configuration default="true" type="js.build_tools.npm">
       <command value="run" />
     </configuration>
+    <configuration name="main.dart" type="FlutterRunConfigurationType" factoryName="Flutter">
+      <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
+      <option name="additionalArgs" value="--dart-define=ENV=dev" />
+      <option name="buildFlavor" value="dev" />
+      <method v="2" />
+    </configuration>
     <configuration name="Main" type="Application" />
   </component>
 </project>`;
 
 test('parses IntelliJ npm run configurations', () => {
   const configs = parseIntellijXml(WORKSPACE, '/p', '/Users/me', false);
-  assert.equal(configs.length, 2);
-  const [start, dev] = configs;
+  assert.equal(configs.length, 3);
+  const [start, dev, flutter] = configs;
+  assert.equal(flutter.kind, 'flutter');
+  assert.equal(flutter.program, '/p/lib/main.dart');
+  assert.equal(flutter.runArgs, '--dart-define=ENV=dev');
+  assert.equal(flutter.flavor, 'dev');
+  assert.equal(start.kind, 'npm');
   assert.equal(start.name, 'bancapersonas start');
   assert.equal(start.packageJson, '/p/bancapersonas/package.json');
   assert.equal(start.command, 'start');
@@ -75,6 +86,6 @@ test('finds projects and reads workspace.xml plus .run files', () => {
 
   assert.deepEqual(findIntellijProjects(root), [project]);
   const configs = readIntellijConfigs(project, '/Users/me');
-  assert.deepEqual(configs.map(c => [c.name, c.shared]), [['bancapersonas start', false], ['run dev', false], ['build', true]]);
-  assert.equal(configs[2].packageJson, path.join(project, 'package.json'));
+  assert.deepEqual(configs.map(c => [c.name, c.shared]), [['bancapersonas start', false], ['run dev', false], ['main.dart', false], ['build', true]]);
+  assert.equal(configs[3].packageJson, path.join(project, 'package.json'));
 });

@@ -137,3 +137,11 @@ export function resolvePackageManager(c: RunConfig, node: string | undefined, ct
     ?? findIn(pathDirs(ctx.env, ctx.platform), value, ctx.platform)
     ?? value;
 }
+
+/** Nearest directory with a pubspec.yaml above the Dart entrypoint. */
+export function flutterRoot(program: string, stopDir: string): string | undefined {
+  for (const dir of ancestors(path.dirname(program), stopDir)) {
+    if (fs.existsSync(path.join(dir, 'pubspec.yaml'))) { return dir; }
+  }
+  return undefined;
+}

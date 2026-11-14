@@ -2,7 +2,7 @@
 
 ## What it is
 
-VS Code extension that brings IntelliJ/WebStorm **npm run configurations**: status bar selector + Run/Debug/Stop, a "Run/Debug Configurations" webview dialog, Node.js runtime/package manager detection, IntelliJ shortcuts (`⌃R`, `⌃D`, `⌘F2`) and import from `.idea`. Published as `angelminga.run-configurations`. **Code, comments and docs are in English. User-facing text is localized**: `vscode.l10n.t` uses the English text as key → add new strings to `l10n/bundle.l10n.es.json`; every `%key%` of `package.json` goes to `package.nls.json` **and** `package.nls.es.json`. Strings used by `media/editor.js` are listed in `strings()` in `src/editor.ts`.
+VS Code extension that brings IntelliJ/WebStorm **run configurations** (npm and Flutter): status bar selector + Run/Debug/Stop, a "Run/Debug Configurations" webview dialog, Node.js runtime/package manager detection, IntelliJ shortcuts (`⌃R`, `⌃D`, `⌘F2`) and import from `.idea`. Published as `angelminga.run-configurations`. **Code, comments and docs are in English. User-facing text is localized**: `vscode.l10n.t` uses the English text as key → add new strings to `l10n/bundle.l10n.es.json`; every `%key%` of `package.json` goes to `package.nls.json` **and** `package.nls.es.json`. Strings used by `media/editor.js` are listed in `strings()` in `src/editor.ts`.
 
 ## Structure
 
@@ -16,12 +16,12 @@ src/
 ├── detect.ts     # node / npm / pnpm / yarn / bun discovery and `--version`                                (pure)
 ├── intellij.ts   # `js.build_tools.npm` XML parsing, `.idea` / `.run` discovery                            (pure)
 └── test/         # node:test unit tests for the pure modules
-media/editor.js, editor.css   # dialog UI, plain DOM, VS Code theme variables
+media/editor.js, editor.css   # dialog UI (opened in a floating window via workbench.action.moveEditorToNewWindow), plain DOM, VS Code theme variables
 ```
 
 ## How a configuration runs
 
-`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
+`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); the device is Dart-Code's selected one. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
 
 ## Commands
 

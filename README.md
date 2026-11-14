@@ -1,12 +1,13 @@
 # Run Configurations (IntelliJ-style)
 
-IntelliJ / WebStorm-style **npm run configurations** for VS Code.
+IntelliJ / WebStorm-style **run configurations** for VS Code: **npm** and **Flutter**.
 
 - **Selector in the status bar** with the active configuration and ▷ Run, 🐞 Debug and ■ Stop buttons.
-- **Run/Debug Configurations dialog** with the same fields as IntelliJ: name, *Allow multiple instances*, *Store as project file*, package.json, command, scripts, arguments, Node runtime, Node options, package manager, environment and *Before launch*.
+- **Run/Debug Configurations dialog**, in its own floating window like IntelliJ (`runConfigurations.floatingDialog`), with `+` → *npm* / *Flutter*. npm has the same fields as IntelliJ: name, *Allow multiple instances*, *Store as project file*, package.json, command, scripts, arguments, Node runtime, Node options, package manager, environment and *Before launch*.
+- **Flutter**: Dart entrypoint, additional `flutter run` args, build flavor and environment variables. Runs through the Dart/Flutter extension on the device selected there (*Select Flutter Device…* in the selector).
 - **Detected Node.js runtimes and package managers** (nvm, fnm, volta, asdf, mise, Homebrew, PATH) with their versions. *Project* uses `.nvmrc` / `.node-version` and the project's lockfile or `packageManager` field.
 - **IntelliJ shortcuts**: `⌃R` run, `⌃D` debug, `⌘F2` stop, `⌃⌥R` choose configuration (macOS); `Shift+F10`, `Shift+F9`, `Ctrl+F2`, `Alt+Shift+F10` on Windows/Linux.
-- **Import from IntelliJ**: reads `.idea/workspace.xml`, `.idea/runConfigurations/*.xml` and `.run/*.run.xml`.
+- **Import from IntelliJ** (npm and Flutter): reads `.idea/workspace.xml`, `.idea/runConfigurations/*.xml` and `.run/*.run.xml`.
 - Runs through VS Code's JavaScript debugger, so **Debug** stops at breakpoints, including child processes.
 
 ## Where configurations are stored
@@ -41,4 +42,5 @@ On macOS, `⌃D` replaces VS Code's *delete right* in the editor and `⌃R` repl
 |---|---|---|
 | `runConfigurations.defaultNodeRuntime` | `""` | Node binary for *Project* when there is no `.nvmrc` (empty: `node` on PATH) |
 | `runConfigurations.showStatusBar` | `true` | Status bar selector and buttons |
+| `runConfigurations.floatingDialog` | `true` | Open the dialog in its own window (off: editor tab) |
 | `runConfigurations.offerIntellijImport` | `true` | Offer the import when a workspace has no configurations |

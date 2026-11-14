@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Flutter run configurations (Dart entrypoint, run args, build flavor, environment), run through the Dart extension; `flutter-run` launch type and import from IntelliJ.
+- The Run/Debug Configurations dialog opens in its own floating window (`runConfigurations.floatingDialog`).
+- `+` opens an *Add New Configuration* menu (npm / Flutter).
+- *Select Flutter Device…* in the selector; *Current File* also runs `.dart` files.
+
 ## 0.1.1
 
 - Run, Debug and Edit Configurations always available in the editor title run menu.

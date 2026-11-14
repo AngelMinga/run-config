@@ -5,8 +5,8 @@ import * as vscode from 'vscode';
 import { detect, Detection } from './detect';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
-import { buildNodeLaunch, configKey, DEBUG_TYPE, fromLaunchEntry, RunConfig, toLaunchEntry } from './model';
-import { ancestors, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
+import { anchorPath, buildFlutterLaunch, buildNodeLaunch, configKey, DEBUG_TYPE, FLUTTER_TYPE, fromLaunchEntry, RunConfig, toLaunchEntry } from './model';
+import { ancestors, flutterRoot, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
 import { ConfigStore, launchJsonPath, StoredConfig } from './store';
 
 const home = os.homedir();
@@ -18,7 +18,9 @@ export type Selection =
 
 const SELECTED_KEY = 'runConfigurations.selected';
 const IMPORT_OFFERED_KEY = 'runConfigurations.importOffered';
-const RUNNABLE_FILE = /\.(m|c)?(j|t)s$/i;
+const RUNNABLE_FILE = /\.((m|c)?(j|t)s|dart)$/i;
+const DART_EXTENSION = 'Dart-Code.dart-code';
+const FLUTTER_EXTENSION = 'Dart-Code.flutter';
 
 /** Cached node / package manager detection (a few `--version` calls). */
 export class Runtimes {
@@ -139,6 +141,41 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   }));
 
+  // ---------- debug type: flutter-run → dart (Dart-Code) ----------
+  context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(FLUTTER_TYPE, {
+    provideDebugConfigurations: () => [{
+      type: FLUTTER_TYPE, request: 'launch', name: 'main.dart', program: '${workspaceFolder}/lib/main.dart',
+    }],
+    resolveDebugConfiguration: async (folder, config) => {
+      if (config.type !== FLUTTER_TYPE) { return config; }
+      const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
+      const c = fromLaunchEntry(config, folderPath, home, true);
+      if (!c.name) { c.name = config.name || 'Flutter'; }
+      if (!vscode.extensions.getExtension(DART_EXTENSION)) {
+        const install = t('Install Flutter Extension');
+        if (await vscode.window.showErrorMessage(t('Running Flutter configurations needs the Dart and Flutter extensions.'), install) === install) {
+          await vscode.commands.executeCommand('workbench.extensions.search', FLUTTER_EXTENSION);
+        }
+        return undefined;
+      }
+      if (!fs.existsSync(c.program)) {
+        void showConfigError(t('Dart entrypoint not found: {0}', c.program), c);
+        return undefined;
+      }
+      const root = flutterRoot(c.program, c.folder);
+      if (!root) {
+        void showConfigError(t('No pubspec.yaml found above {0}', c.program), c);
+        return undefined;
+      }
+      if (!c.allowMultiple) {
+        await sessions.stop(configKey(c));
+      }
+      const launch = buildFlutterLaunch(c, root);
+      if (config.noDebug) { launch.noDebug = true; }
+      return launch as vscode.DebugConfiguration;
+    },
+  }));
+
   const showConfigError = async (message: string, c: RunConfig) => {
     const edit = t('Edit Configuration');
     if (await vscode.window.showErrorMessage(message, edit) === edit) {
@@ -174,11 +211,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const launchCurrentFile = async (options: vscode.DebugSessionOptions) => {
     const doc = vscode.window.activeTextEditor?.document;
     if (!doc || doc.uri.scheme !== 'file' || !RUNNABLE_FILE.test(doc.uri.fsPath)) {
-      void vscode.window.showWarningMessage(t('Open a JavaScript or TypeScript file to run it as "Current File".'));
+      void vscode.window.showWarningMessage(t('Open a JavaScript, TypeScript or Dart file to run it as "Current File".'));
       return;
     }
     const file = doc.uri.fsPath;
     const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+    if (file.endsWith('.dart')) {
+      const root = flutterRoot(file, folder?.uri.fsPath ?? path.dirname(file)) ?? folder?.uri.fsPath ?? path.dirname(file);
+      await vscode.debug.startDebugging(folder, { type: 'dart', request: 'launch', name: path.basename(file), program: file, cwd: root }, options);
+      return;
+    }
     const node = projectNode({ packageJson: path.join(path.dirname(file), 'package.json'), folder: folder?.uri.fsPath ?? path.dirname(file) },
       await runtimes.context()).node?.path;
     await vscode.debug.startDebugging(folder, {
@@ -206,7 +248,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   // ---------- picker ----------
-  interface PickItem extends vscode.QuickPickItem { sel?: Selection; action?: 'edit' | 'import' }
+  interface PickItem extends vscode.QuickPickItem { sel?: Selection; action?: 'edit' | 'import' | 'device' }
   const runButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('play'), tooltip: t('Run') };
   const debugButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('debug-alt'), tooltip: t('Debug') };
 
@@ -216,15 +258,18 @@ export function activate(context: vscode.ExtensionContext): void {
     const current = getSelection();
     const same = (s: Selection) => JSON.stringify(s) === JSON.stringify(current);
     const items: PickItem[] = [];
-    const npm = store.list();
-    if (npm.length) {
-      items.push({ label: 'npm', kind: vscode.QuickPickItemKind.Separator });
-      for (const c of npm) {
+    const all = store.list();
+    for (const [kind, title] of [['npm', 'npm'], ['flutter', 'Flutter']] as const) {
+      const group = all.filter(c => c.kind === kind);
+      if (!group.length) { continue; }
+      items.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
+      for (const c of group) {
         const sel: Selection = { kind: 'npm', folder: c.folder, name: c.name };
         const running = sessions.running(configKey(c)).length > 0;
         items.push({
-          label: `$(${running ? 'debug-restart' : 'package'}) ${c.name}`,
-          description: [c.command, c.scripts].filter(Boolean).join(' ') + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
+          label: `$(${running ? 'debug-restart' : kindIcon(c.kind)}) ${c.name}`,
+          description: (c.kind === 'flutter' ? path.basename(c.program) : [c.command, c.scripts].filter(Boolean).join(' '))
+            + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
           detail: running ? t('Running') : undefined,
           picked: same(sel),
           sel,
@@ -247,6 +292,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({ label: `$(file-code) ${t('Current File')}`, sel: { kind: 'currentFile' }, buttons: [runButton, debugButton] });
+    if (all.some(c => c.kind === 'flutter') && vscode.extensions.getExtension(DART_EXTENSION)) {
+      items.push({ label: `$(device-mobile) ${t('Select Flutter Device…')}`, action: 'device' });
+    }
     items.push({ label: `$(gear) ${t('Edit Configurations…')}`, action: 'edit' });
     items.push({ label: `$(cloud-download) ${t('Import from IntelliJ…')}`, action: 'import' });
 
@@ -272,6 +320,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const item = qp.selectedItems[0];
       if (item?.action === 'edit') { finish(undefined); openEditor(getSelection()); return; }
       if (item?.action === 'import') { finish(undefined); await importIntellij(false); return; }
+      if (item?.action === 'device') { finish(undefined); await vscode.commands.executeCommand('flutter.selectDevice'); return; }
       if (item?.sel) { await setSelection(item.sel); finish(item.sel); }
     });
     qp.onDidHide(() => { finish(undefined); qp.dispose(); });
@@ -292,7 +341,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       for (const project of projects) {
         for (const config of readIntellijConfigs(project, home)) {
-          const rel = path.relative(folder, config.packageJson);
+          const rel = path.relative(folder, anchorPath(config));
           if (!rel.startsWith('..') && !path.isAbsolute(rel)) { out.push({ folder, config }); }
         }
       }
@@ -300,8 +349,9 @@ export function activate(context: vscode.ExtensionContext): void {
     return out;
   };
 
-  const sameRun = (a: RunConfig, b: RunConfig) =>
-    a.folder === b.folder && a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments;
+  const sameRun = (a: RunConfig, b: RunConfig) => a.kind === b.kind && a.folder === b.folder && (a.kind === 'flutter'
+    ? a.program === b.program && a.runArgs === b.runArgs && a.flavor === b.flavor
+    : a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments);
 
   const importIntellij = async (fromPrompt: boolean): Promise<number> => {
     const existing = store.list();
@@ -328,7 +378,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       void vscode.window.showInformationMessage(t('Imported {0} run configuration(s) from IntelliJ.', added));
     } else if (!fromPrompt) {
-      void vscode.window.showInformationMessage(t('No new IntelliJ npm run configurations found in this workspace.'));
+      void vscode.window.showInformationMessage(t('No new IntelliJ run configurations found in this workspace.'));
     }
     return added;
   };
@@ -343,7 +393,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await context.workspaceState.update(IMPORT_OFFERED_KEY, true);
     const yes = t('Import');
     const answer = await vscode.window.showInformationMessage(
-      t('Found {0} IntelliJ npm run configuration(s) in this workspace. Import them?', count), yes, t('Not now'));
+      t('Found {0} IntelliJ run configuration(s) in this workspace. Import them?', count), yes, t('Not now'));
     if (answer === yes) { await importIntellij(true); }
   };
 
@@ -412,7 +462,7 @@ export function activate(context: vscode.ExtensionContext): void {
       selector.text = `$(file-code) ${t('Current File')} $(chevron-down)`;
       selector.tooltip = t('Select run configuration');
     } else {
-      const icon = sel.kind === 'npm' ? 'package' : 'debug-alt-small';
+      const icon = sel.kind === 'npm' ? kindIcon(store.find(sel.folder, sel.name)?.kind ?? 'npm') : 'debug-alt-small';
       selector.text = `$(${icon}) ${sel.name} $(chevron-down)`;
       selector.tooltip = t('Select run configuration');
     }
@@ -460,6 +510,10 @@ export function activate(context: vscode.ExtensionContext): void {
   refreshUi();
   void runtimes.get();
   void offerImport();
+}
+
+function kindIcon(kind: RunConfig['kind']): string {
+  return kind === 'flutter' ? 'device-mobile' : 'package';
 }
 
 export function deactivate(): void {

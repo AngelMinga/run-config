@@ -1,6 +1,6 @@
 {
   "extension.displayName": "Run Configurations (IntelliJ-style)",
-  "extension.description": "IntelliJ/WebStorm-style npm run configurations: a run selector in the status bar, a Run/Debug Configurations dialog with detected Node.js runtimes and package managers, Ctrl+R to run and import from IntelliJ.",
+  "extension.description": "IntelliJ/WebStorm-style run configurations for npm and Flutter: a run selector in the status bar, a floating Run/Debug Configurations dialog with detected Node.js runtimes and package managers, Ctrl+R to run and import from IntelliJ.",
   "category": "Run Configurations",
   "command.run": "Run Selected Configuration",
   "command.debug": "Debug Selected Configuration",
@@ -23,5 +23,12 @@
   "snippet.description": "Runs a package.json script with a chosen Node.js runtime and package manager.",
   "settings.defaultNodeRuntime": "Node binary used when a configuration's **Node runtime** is *Project* and there is no `.nvmrc`/`.node-version`. Empty: the `node` on PATH.",
   "settings.showStatusBar": "Show the run configuration selector and the Run/Debug/Stop buttons in the status bar.",
-  "settings.offerIntellijImport": "Offer to import IntelliJ npm run configurations (`.idea/workspace.xml`, `.idea/runConfigurations`, `.run`) when a workspace has none."
+  "settings.offerIntellijImport": "Offer to import IntelliJ npm run configurations (`.idea/workspace.xml`, `.idea/runConfigurations`, `.run`) when a workspace has none.",
+  "debugger.flutter.label": "Flutter (Run Configuration)",
+  "attr.program": "Dart entrypoint of the application (e.g. lib/main.dart).",
+  "attr.runArgs": "Additional arguments to .",
+  "attr.flavor": "Build flavor: a Gradle product flavor or an Xcode custom scheme.",
+  "snippet.flutter.label": "Flutter: Run Configuration (IntelliJ-style)",
+  "snippet.flutter.description": "Runs a Flutter app through the Dart extension, with flavor and extra flutter run arguments.",
+  "settings.floatingDialog": "Open the Run/Debug Configurations dialog in its own floating window, like IntelliJ. Off: as an editor tab."
 }
