@@ -41,5 +41,8 @@
   "attr.interpreter": "Intérprete con sus opciones. Vacío: se elige por la extensión (.py → Python de venv/.venv o python3, .sh → bash, .js → node).",
   "attr.workingDir": "Carpeta de trabajo. Vacío: la carpeta del script.",
   "snippet.script.label": "Configuración de ejecución: Script",
-  "snippet.script.description": "Ejecuta un script de Python o de shell, como las configuraciones Python / Shell Script de IntelliJ."
+  "snippet.script.description": "Ejecuta un script de Python o de shell, como las configuraciones Python / Shell Script de IntelliJ.",
+  "config.npmConsole": "Dónde muestran su salida las configuraciones npm.",
+  "config.npmConsole.terminal": "Terminal integrada (entrada interactiva, TTY completo).",
+  "config.npmConsole.debugConsole": "Debug Console, como la ventana Run de IntelliJ (salida de todos los procesos, con colores)."
 }

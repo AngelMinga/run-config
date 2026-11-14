@@ -150,7 +150,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!c.allowMultiple) {
         await sessions.stop(configKey(c));
       }
-      const launch = buildNodeLaunch(c, { node, packageManager: resolvePackageManager(c, node, ctx) }, process.env);
+      const output = vscode.workspace.getConfiguration('runConfigurations').get<string>('npmConsole') === 'internalConsole'
+        ? 'internalConsole' : 'integratedTerminal';
+      const launch = buildNodeLaunch(c, { node, packageManager: resolvePackageManager(c, node, ctx) }, process.env, process.platform, output);
       if (config.noDebug) { launch.noDebug = true; }
       return launch as vscode.DebugConfiguration;
     },
@@ -284,7 +286,8 @@ export function activate(context: vscode.ExtensionContext): void {
       name: path.basename(file),
       program: file,
       cwd: folder?.uri.fsPath ?? path.dirname(file),
-      console: 'integratedTerminal',
+      console: vscode.workspace.getConfiguration('runConfigurations').get<string>('npmConsole') === 'internalConsole'
+        ? 'internalConsole' : 'integratedTerminal',
       skipFiles: ['<node_internals>/**'],
       ...(node ? { runtimeExecutable: node } : {}),
     }, options);

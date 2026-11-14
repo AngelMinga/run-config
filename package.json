@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -450,6 +450,19 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%settings.floatingDialog%"
+        },
+        "runConfigurations.npmConsole": {
+          "type": "string",
+          "enum": [
+            "integratedTerminal",
+            "internalConsole"
+          ],
+          "default": "integratedTerminal",
+          "enumDescriptions": [
+            "%config.npmConsole.terminal%",
+            "%config.npmConsole.debugConsole%"
+          ],
+          "description": "%config.npmConsole%"
         }
       }
     }

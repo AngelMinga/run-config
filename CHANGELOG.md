@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- `runConfigurations.npmConsole`: npm configurations (and *Current File* for JavaScript) can print to the Debug Console, like IntelliJ's Run window, instead of the integrated terminal. In the Debug Console the output of every process is captured (`outputCapture: "std"`) and colours are kept (`FORCE_COLOR=1`). Default stays the terminal.
+
 ## 0.4.0
 
 - **Script configurations** (like IntelliJ's Python / Shell Script): script path, options, interpreter, working directory and environment. Empty interpreter → chosen from the extension (`.py` → `venv/` or `.venv/` Python, else `python3`; `.sh` → `bash`; `.js` → `node`).

@@ -41,5 +41,8 @@
   "attr.interpreter": "Interpreter command with its options. Empty: chosen from the extension (.py → venv/.venv Python or python3, .sh → bash, .js → node).",
   "attr.workingDir": "Working directory. Empty: the script's directory.",
   "snippet.script.label": "Run Configuration: Script",
-  "snippet.script.description": "Runs a Python or shell script, like IntelliJ's Python / Shell Script configurations."
+  "snippet.script.description": "Runs a Python or shell script, like IntelliJ's Python / Shell Script configurations.",
+  "config.npmConsole": "Where npm configurations print their output.",
+  "config.npmConsole.terminal": "Integrated terminal (interactive input, full TTY).",
+  "config.npmConsole.debugConsole": "Debug Console, like IntelliJ's Run window (output of all processes, colours kept)."
 }

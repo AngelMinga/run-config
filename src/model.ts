@@ -311,12 +311,16 @@ export interface Resolved {
   packageManager: string;
 }
 
+/** Where npm configurations print: the integrated terminal (default) or the Debug Console, like IntelliJ's Run window. */
+export type NpmConsole = 'integratedTerminal' | 'internalConsole';
+
 /** Builds the js-debug launch configuration that actually runs the npm configuration. */
 export function buildNodeLaunch(
   c: RunConfig,
   resolved: Resolved,
   baseEnv: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
+  output: NpmConsole = 'integratedTerminal',
 ): Record<string, unknown> {
   const env: Record<string, string | null> = { ...c.env };
   if (resolved.node) {
@@ -340,11 +344,17 @@ export function buildNodeLaunch(
     runtimeExecutable: resolved.packageManager,
     runtimeArgs: commandLine(c, packageManagerName(resolved.packageManager)),
     env,
-    console: 'integratedTerminal',
+    console: output,
     autoAttachChildProcesses: true,
     skipFiles: ['<node_internals>/**'],
     __runConfigKey: configKey(c),
   };
+  if (output === 'internalConsole') {
+    // Capture stdout/stderr of every process npm starts (not only console.* of the debuggee), and keep
+    // colours: without a TTY most tools drop them, and the Debug Console renders ANSI.
+    launch.outputCapture = 'std';
+    if (!('FORCE_COLOR' in c.env)) { env.FORCE_COLOR = '1'; }
+  }
   if (c.preLaunchTask) {
     launch.preLaunchTask = c.preLaunchTask;
   }

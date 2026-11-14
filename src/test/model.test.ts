@@ -125,3 +125,16 @@ test('normalize fills fields of configurations saved by older versions', () => {
   assert.equal(c.runArgs, '');
   assert.deepEqual(c.env, {});
 });
+
+test('buildNodeLaunch: terminal by default, Debug Console with captured output and colours on request', () => {
+  const c = { ...emptyConfig('/w', 'start'), packageJson: '/w/package.json', command: 'start' };
+  const term = buildNodeLaunch(c, { packageManager: 'npm' }, {}, 'darwin');
+  assert.equal(term.console, 'integratedTerminal');
+  assert.equal(term.outputCapture, undefined);
+  const dbg = buildNodeLaunch(c, { packageManager: 'npm' }, {}, 'darwin', 'internalConsole');
+  assert.equal(dbg.console, 'internalConsole');
+  assert.equal(dbg.outputCapture, 'std');
+  assert.equal((dbg.env as Record<string, string>).FORCE_COLOR, '1');
+  const own = buildNodeLaunch({ ...c, env: { FORCE_COLOR: '0' } }, { packageManager: 'npm' }, {}, 'darwin', 'internalConsole');
+  assert.equal((own.env as Record<string, string>).FORCE_COLOR, '0');
+});
