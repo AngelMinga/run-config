@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- The Flutter device selector shows in any Flutter project (pubspec.yaml), even before a configuration exists.
+- The status bar selector always opens the picker; with no configurations it offers the IntelliJ import first.
+
 ## 0.3.0
 
 - Flutter device selector (status bar, selector, editor run menu) from `flutter devices`, with *Open Emulator* and refresh; the chosen device is passed as `deviceId`.

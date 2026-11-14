@@ -274,6 +274,12 @@ export function activate(context: vscode.ExtensionContext): void {
     const same = (s: Selection) => JSON.stringify(s) === JSON.stringify(current);
     const items: PickItem[] = [];
     const all = store.list();
+    if (!all.length) {
+      const importable = intellijCandidates().length;
+      if (importable) {
+        items.push({ label: `$(cloud-download) ${t('Import {0} configuration(s) from IntelliJ', importable)}`, action: 'import' });
+      }
+    }
     for (const [kind, title] of [['npm', 'npm'], ['flutter', 'Flutter']] as const) {
       const group = all.filter(c => c.kind === kind);
       if (!group.length) { continue; }
@@ -307,7 +313,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({ label: `$(file-code) ${t('Current File')}`, sel: { kind: 'currentFile' }, buttons: [runButton, debugButton] });
-    if (all.some(c => c.kind === 'flutter')) {
+    if (all.some(c => c.kind === 'flutter') || isFlutterWorkspace()) {
       const device = devices.selected();
       items.push({
         label: `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${t('Select Flutter Device…')}`,
@@ -467,6 +473,10 @@ export function activate(context: vscode.ExtensionContext): void {
   stopItem.text = '$(debug-stop)';
   context.subscriptions.push(selector, runItem, debugItem, stopItem);
 
+  /** A workspace folder is a Flutter/Dart project (pubspec.yaml at its root) or holds Flutter configurations. */
+  const isFlutterWorkspace = () => store.folders().some(f => fs.existsSync(path.join(f, 'pubspec.yaml')))
+    || store.list().some(c => c.kind === 'flutter');
+
   const shortcut = (mac: string, other: string) => (process.platform === 'darwin' ? mac : other);
 
   function refreshUi(): void {
@@ -477,7 +487,9 @@ export function activate(context: vscode.ExtensionContext): void {
     void vscode.commands.executeCommand('setContext', 'runConfigurations.hasSelection', !!sel);
     const flutterSelected = sel?.kind === 'npm' && store.find(sel.folder, sel.name)?.kind === 'flutter';
     void vscode.commands.executeCommand('setContext', 'runConfigurations.flutterSelected', flutterSelected);
-    if (flutterSelected) { devices.warmUp(); }
+    const flutter = flutterSelected || isFlutterWorkspace();
+    void vscode.commands.executeCommand('setContext', 'runConfigurations.flutter', flutter);
+    if (flutter) { devices.warmUp(); }
     if (!show) {
       [deviceItem, selector, runItem, debugItem, stopItem].forEach(i => i.hide());
       return;
@@ -485,7 +497,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const device = devices.selected();
     deviceItem.text = `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${device?.name ?? t('Flutter device')}`;
     deviceItem.tooltip = t('Device for Flutter configurations');
-    if (flutterSelected) { deviceItem.show(); } else { deviceItem.hide(); }
+    if (flutter) { deviceItem.show(); } else { deviceItem.hide(); }
     if (!sel) {
       selector.text = `$(gear) ${t('Add Configuration…')}`;
       selector.tooltip = t('No run configurations yet. Create one or import them from IntelliJ.');
@@ -526,13 +538,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('runConfigurations.attach', () => launch(getSelection(), true, true)),
     vscode.commands.registerCommand('runConfigurations.selectDevice', () => devices.pick()),
     vscode.commands.registerCommand('runConfigurations.stop', stop),
-    vscode.commands.registerCommand('runConfigurations.select', async () => {
-      if (!store.list().length && !store.others().length) {
-        openEditor();
-        return;
-      }
-      await pick();
-    }),
+    // Always the selector: even without configurations it offers the import, the Flutter device and the dialog.
+    vscode.commands.registerCommand('runConfigurations.select', () => pick()),
     vscode.commands.registerCommand('runConfigurations.edit', () => openEditor(getSelection())),
     vscode.commands.registerCommand('runConfigurations.importIntellij', () => importIntellij(false)),
     vscode.commands.registerCommand('runConfigurations.refreshRuntimes', async () => {

@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -138,7 +138,7 @@
         {
           "command": "runConfigurations.selectDevice",
           "group": "2_flutter@1",
-          "when": "runConfigurations.flutterSelected"
+          "when": "runConfigurations.flutter"
         }
       ],
       "commandPalette": [

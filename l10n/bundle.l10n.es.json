@@ -100,5 +100,6 @@
   "Starting emulator {0}…": "Iniciando el emulador {0}…",
   "The emulator did not appear in the device list yet. Pick it once it has started.": "El emulador todavía no aparece en la lista de dispositivos. Elígelo cuando haya arrancado.",
   "Additional attach args:": "Argumentos de flutter attach:",
-  "Additional arguments to 'flutter attach'.": "Argumentos adicionales para 'flutter attach'."
+  "Additional arguments to 'flutter attach'.": "Argumentos adicionales para 'flutter attach'.",
+  "Import {0} configuration(s) from IntelliJ": "Importar {0} configuraciones desde IntelliJ"
 }
