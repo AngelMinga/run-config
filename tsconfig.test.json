@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/model.ts", "src/detect.ts", "src/project.ts", "src/intellij.ts", "src/test"]
+}

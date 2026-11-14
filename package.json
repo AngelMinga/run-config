@@ -1,0 +1,269 @@
+{
+  "name": "run-configurations",
+  "displayName": "%extension.displayName%",
+  "description": "%extension.description%",
+  "version": "0.1.0",
+  "publisher": "angelminga",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AngelMinga/run-config"
+  },
+  "bugs": {
+    "url": "https://github.com/AngelMinga/run-config/issues"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Debuggers",
+    "Other"
+  ],
+  "keywords": [
+    "intellij",
+    "webstorm",
+    "run configuration",
+    "npm",
+    "pnpm",
+    "yarn",
+    "nvm",
+    "launch"
+  ],
+  "main": "./dist/extension.js",
+  "l10n": "./l10n",
+  "activationEvents": [
+    "onStartupFinished",
+    "onDebugResolve:npm-run"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "runConfigurations.run",
+        "title": "%command.run%",
+        "category": "%category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "runConfigurations.debug",
+        "title": "%command.debug%",
+        "category": "%category%",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "runConfigurations.stop",
+        "title": "%command.stop%",
+        "category": "%category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "runConfigurations.select",
+        "title": "%command.select%",
+        "category": "%category%"
+      },
+      {
+        "command": "runConfigurations.edit",
+        "title": "%command.edit%",
+        "category": "%category%",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "runConfigurations.importIntellij",
+        "title": "%command.import%",
+        "category": "%category%"
+      },
+      {
+        "command": "runConfigurations.refreshRuntimes",
+        "title": "%command.refresh%",
+        "category": "%category%"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "runConfigurations.run",
+        "key": "shift+f10",
+        "mac": "ctrl+r"
+      },
+      {
+        "command": "runConfigurations.debug",
+        "key": "shift+f9",
+        "mac": "ctrl+d"
+      },
+      {
+        "command": "runConfigurations.stop",
+        "key": "ctrl+f2",
+        "mac": "cmd+f2",
+        "when": "runConfigurations.running"
+      },
+      {
+        "command": "runConfigurations.select",
+        "key": "alt+shift+f10",
+        "mac": "ctrl+alt+r"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "runConfigurations.run",
+          "group": "1_runConfigurations@1",
+          "when": "runConfigurations.hasSelection"
+        },
+        {
+          "command": "runConfigurations.debug",
+          "group": "1_runConfigurations@2",
+          "when": "runConfigurations.hasSelection"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "runConfigurations.stop",
+          "when": "runConfigurations.running"
+        }
+      ]
+    },
+    "debuggers": [
+      {
+        "type": "npm-run",
+        "label": "%debugger.label%",
+        "languages": [
+          "javascript",
+          "typescript",
+          "javascriptreact",
+          "typescriptreact"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "packageJson"
+            ],
+            "properties": {
+              "packageJson": {
+                "type": "string",
+                "description": "%attr.packageJson%",
+                "default": "${workspaceFolder}/package.json"
+              },
+              "command": {
+                "type": "string",
+                "description": "%attr.command%",
+                "default": "run",
+                "examples": [
+                  "run",
+                  "start",
+                  "test",
+                  "install"
+                ]
+              },
+              "scripts": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.scripts%"
+              },
+              "arguments": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.arguments%"
+              },
+              "nodeRuntime": {
+                "type": "string",
+                "description": "%attr.nodeRuntime%"
+              },
+              "nodeOptions": {
+                "type": "string",
+                "description": "%attr.nodeOptions%"
+              },
+              "packageManager": {
+                "type": "string",
+                "description": "%attr.packageManager%",
+                "examples": [
+                  "npm",
+                  "pnpm",
+                  "yarn",
+                  "bun"
+                ]
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "npm-run",
+            "request": "launch",
+            "name": "npm start",
+            "packageJson": "^\"\\${workspaceFolder}/package.json\"",
+            "command": "start"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "%snippet.label%",
+            "description": "%snippet.description%",
+            "body": {
+              "type": "npm-run",
+              "request": "launch",
+              "name": "${1:npm run dev}",
+              "packageJson": "^\"\\${workspaceFolder}/${2:package.json}\"",
+              "command": "${3:run}",
+              "scripts": "${4:dev}",
+              "packageManager": "${5:pnpm}"
+            }
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "%extension.displayName%",
+      "properties": {
+        "runConfigurations.defaultNodeRuntime": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "markdownDescription": "%settings.defaultNodeRuntime%"
+        },
+        "runConfigurations.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.showStatusBar%"
+        },
+        "runConfigurations.offerIntellijImport": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.offerIntellijImport%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "tsc -p tsconfig.test.json && node --test out/test/*.test.js",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run typecheck && node esbuild.mjs --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/vscode": "~1.95.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.28.2",
+    "jsonc-parser": "^3.3.1",
+    "typescript": "^5.9.3"
+  }
+}
