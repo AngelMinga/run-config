@@ -83,6 +83,40 @@ export function runFlutter(bin: string, args: string[], env: NodeJS.ProcessEnv, 
 }
 
 /** Codicon for a device's target platform. */
+/** Flutter platform folders a project can have (`flutter create --platforms=…`). */
+export const PLATFORM_DIRS = ['android', 'ios', 'macos', 'web', 'linux', 'windows'] as const;
+export type ProjectPlatform = typeof PLATFORM_DIRS[number];
+
+/** Maps a device `targetPlatform` (`darwin`, `web-javascript`, `android-arm64`…) or an emulator platform to its project folder. */
+export function devicePlatformKey(platform: string): ProjectPlatform | undefined {
+  const p = platform.toLowerCase();
+  if (p === 'darwin' || p.startsWith('macos')) { return 'macos'; }
+  if (p.startsWith('web')) { return 'web'; }
+  if (p.startsWith('android')) { return 'android'; }
+  if (p.startsWith('ios')) { return 'ios'; }
+  if (p.startsWith('linux')) { return 'linux'; }
+  if (p.startsWith('windows')) { return 'windows'; }
+  return undefined;
+}
+
+/** Platform folders present in the given Flutter project roots (union). */
+export function projectPlatforms(roots: string[], exists: (p: string) => boolean = fs.existsSync): Set<ProjectPlatform> {
+  const out = new Set<ProjectPlatform>();
+  for (const root of roots) {
+    for (const dir of PLATFORM_DIRS) {
+      if (exists(path.join(root, dir))) { out.add(dir); }
+    }
+  }
+  return out;
+}
+
+/** A device is supported when the project has its platform folder. Unknown platforms or projects are not filtered. */
+export function isDeviceSupported(platform: string, platforms: Set<ProjectPlatform> | undefined): boolean {
+  if (!platforms || platforms.size === 0) { return true; }
+  const key = devicePlatformKey(platform);
+  return !key || platforms.has(key);
+}
+
 export function deviceIcon(platform: string): string {
   if (platform.startsWith('web')) { return 'globe'; }
   if (/^(darwin|linux|windows)/.test(platform)) { return 'vm'; }

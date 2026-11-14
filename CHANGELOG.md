@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- The device button shows the device a run will really use: the one picked here, else the Flutter extension's device (polled, it has no change event), else *No device*.
+- Devices and emulators whose platform folder is missing in the project (e.g. `macos/`, `web/`) are listed last, marked *not supported by this project*, and ask for confirmation before being picked.
+
 ## 0.3.1
 
 - The Flutter device selector shows in any Flutter project (pubspec.yaml), even before a configuration exists.

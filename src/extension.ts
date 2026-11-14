@@ -98,7 +98,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const store = new ConfigStore(context.workspaceState);
   const runtimes = new Runtimes();
   const sessions = new Sessions();
-  const devices = new DeviceService(context.workspaceState);
+  // Flutter project roots: workspace folders with pubspec.yaml plus the roots of Flutter configurations.
+  const flutterProjectRoots = (): string[] => {
+    const roots = new Set(store.folders().filter(f => fs.existsSync(path.join(f, 'pubspec.yaml'))));
+    for (const c of store.list()) {
+      if (c.kind !== 'flutter') { continue; }
+      const root = flutterRoot(c.program, c.folder);
+      if (root) { roots.add(root); }
+    }
+    return [...roots];
+  };
+  const devices = new DeviceService(context.workspaceState, flutterProjectRoots);
   context.subscriptions.push(devices);
   context.subscriptions.push(store, sessions);
 
@@ -314,10 +324,12 @@ export function activate(context: vscode.ExtensionContext): void {
     items.push({ label: '', kind: vscode.QuickPickItemKind.Separator });
     items.push({ label: `$(file-code) ${t('Current File')}`, sel: { kind: 'currentFile' }, buttons: [runButton, debugButton] });
     if (all.some(c => c.kind === 'flutter') || isFlutterWorkspace()) {
-      const device = devices.selected();
+      const eff = devices.effective();
       items.push({
-        label: `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${t('Select Flutter Device…')}`,
-        description: device?.name ?? t("Flutter extension's device"),
+        label: `$(${eff.device ? deviceIcon(eff.device.platform) : 'device-mobile'}) ${t('Select Flutter Device…')}`,
+        description: eff.device
+          ? (eff.source === 'dart' ? `${eff.device.name} · ${t("Flutter extension's device")}` : eff.device.name)
+          : t('No device'),
         action: 'device',
       });
     }
@@ -494,9 +506,20 @@ export function activate(context: vscode.ExtensionContext): void {
       [deviceItem, selector, runItem, debugItem, stopItem].forEach(i => i.hide());
       return;
     }
-    const device = devices.selected();
-    deviceItem.text = `$(${device ? deviceIcon(device.platform) : 'device-mobile'}) ${device?.name ?? t('Flutter device')}`;
-    deviceItem.tooltip = t('Device for Flutter configurations');
+    // Show the device a run will really use: ours, else the Flutter extension's one.
+    const eff = devices.effective();
+    if (!eff.device) {
+      deviceItem.text = `$(device-mobile) ${t('No device')}`;
+      deviceItem.tooltip = t('No device selected here or in the Flutter extension. Click to pick one.');
+    } else {
+      const icon = !eff.supported ? 'warning' : eff.device.platform ? deviceIcon(eff.device.platform) : 'device-mobile';
+      deviceItem.text = `$(${icon}) ${eff.device.name}`;
+      deviceItem.tooltip = !eff.supported
+        ? t('{0} is not supported by this project.', eff.device.name)
+        : eff.source === 'dart'
+          ? t("{0} (Flutter extension's device)", eff.device.name)
+          : t('Device for Flutter configurations');
+    }
     if (flutter) { deviceItem.show(); } else { deviceItem.hide(); }
     if (!sel) {
       selector.text = `$(gear) ${t('Add Configuration…')}`;

@@ -3,7 +3,31 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { deviceIcon, findFlutter, parseDevices, parseEmulators } from '../flutter';
+import { deviceIcon, devicePlatformKey, findFlutter, isDeviceSupported, parseDevices, parseEmulators, projectPlatforms } from '../flutter';
+
+test('devicePlatformKey maps device and emulator platforms to project folders', () => {
+  assert.equal(devicePlatformKey('darwin'), 'macos');
+  assert.equal(devicePlatformKey('web-javascript'), 'web');
+  assert.equal(devicePlatformKey('android-arm64'), 'android');
+  assert.equal(devicePlatformKey('android'), 'android');
+  assert.equal(devicePlatformKey('ios'), 'ios');
+  assert.equal(devicePlatformKey('linux-x64'), 'linux');
+  assert.equal(devicePlatformKey('windows-x64'), 'windows');
+  assert.equal(devicePlatformKey('fuchsia'), undefined);
+});
+
+test('projectPlatforms and isDeviceSupported', () => {
+  const dirs = new Set(['/p/android', '/p/ios']);
+  const platforms = projectPlatforms(['/p'], p => dirs.has(p));
+  assert.deepEqual([...platforms].sort(), ['android', 'ios']);
+  assert.equal(isDeviceSupported('android-arm64', platforms), true);
+  assert.equal(isDeviceSupported('ios', platforms), true);
+  assert.equal(isDeviceSupported('darwin', platforms), false);
+  assert.equal(isDeviceSupported('web-javascript', platforms), false);
+  assert.equal(isDeviceSupported('fuchsia', platforms), true);
+  assert.equal(isDeviceSupported('darwin', new Set()), true);
+  assert.equal(isDeviceSupported('darwin', undefined), true);
+});
 import { buildFlutterLaunch, emptyConfig } from '../model';
 
 test('parseDevices reads --machine output and skips unsupported devices', () => {
