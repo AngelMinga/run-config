@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -58,7 +58,8 @@
       {
         "command": "runConfigurations.select",
         "title": "%command.select%",
-        "category": "%category%"
+        "category": "%category%",
+        "icon": "$(run-all)"
       },
       {
         "command": "runConfigurations.edit",
@@ -104,19 +105,28 @@
       "editor/title/run": [
         {
           "command": "runConfigurations.run",
-          "group": "1_runConfigurations@1",
-          "when": "runConfigurations.hasSelection"
+          "group": "1_runConfigurations@1"
         },
         {
           "command": "runConfigurations.debug",
-          "group": "1_runConfigurations@2",
-          "when": "runConfigurations.hasSelection"
+          "group": "1_runConfigurations@2"
+        },
+        {
+          "command": "runConfigurations.edit",
+          "group": "1_runConfigurations@3"
         }
       ],
       "commandPalette": [
         {
           "command": "runConfigurations.stop",
           "when": "runConfigurations.running"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "runConfigurations.select",
+          "group": "navigation@-10",
+          "when": "view == workbench.explorer.fileView"
         }
       ]
     },
