@@ -42,10 +42,12 @@ export class ConfigStore implements vscode.Disposable {
   readonly onDidChange = this.changed.event;
   private readonly watcher: vscode.FileSystemWatcher;
   private readonly home = os.homedir();
+  /** Parsed launch.json per folder: the status bar asks for configurations on every refresh. */
+  private readonly cache = new Map<string, ReturnType<typeof readLaunch>>();
 
   constructor(private readonly state: vscode.Memento) {
     this.watcher = vscode.workspace.createFileSystemWatcher('**/.vscode/launch.json');
-    const fire = () => this.changed.fire();
+    const fire = () => { this.cache.clear(); this.changed.fire(); };
     this.watcher.onDidChange(fire);
     this.watcher.onDidCreate(fire);
     this.watcher.onDidDelete(fire);
@@ -56,6 +58,15 @@ export class ConfigStore implements vscode.Disposable {
     this.changed.dispose();
   }
 
+  private launch(folder: string): ReturnType<typeof readLaunch> {
+    let entry = this.cache.get(folder);
+    if (!entry) {
+      entry = readLaunch(folder);
+      this.cache.set(folder, entry);
+    }
+    return entry;
+  }
+
   folders(): string[] {
     return (vscode.workspace.workspaceFolders ?? []).filter(f => f.uri.scheme === 'file').map(f => f.uri.fsPath);
   }
@@ -64,7 +75,7 @@ export class ConfigStore implements vscode.Disposable {
   list(): StoredConfig[] {
     const out: StoredConfig[] = [];
     for (const folder of this.folders()) {
-      for (const e of readLaunch(folder).data.configurations ?? []) {
+      for (const e of this.launch(folder).data.configurations ?? []) {
         if (isEntry(e) && isRunType(e.type) && typeof e.name === 'string') {
           const c = fromLaunchEntry(e, folder, this.home, true);
           out.push({ ...c, origin: { folder, name: c.name, shared: true } });
@@ -83,7 +94,7 @@ export class ConfigStore implements vscode.Disposable {
   others(): OtherLaunch[] {
     const out: OtherLaunch[] = [];
     for (const folder of this.folders()) {
-      const { data } = readLaunch(folder);
+      const { data } = this.launch(folder);
       for (const e of data.configurations ?? []) {
         if (isEntry(e) && !isRunType(e.type) && typeof e.name === 'string') {
           out.push({ folder, name: e.name, type: String(e.type ?? ''), compound: false });
@@ -164,6 +175,7 @@ export class ConfigStore implements vscode.Disposable {
     if (text !== readLaunch(folder).text) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, text);
+      this.cache.delete(folder);
     }
   }
 }

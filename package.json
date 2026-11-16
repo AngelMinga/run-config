@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {

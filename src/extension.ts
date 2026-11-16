@@ -63,10 +63,15 @@ class Sessions implements vscode.Disposable {
         }
       }),
       vscode.debug.onDidTerminateDebugSession(s => {
+        let ours = false;
         for (const [key, set] of this.byKey) {
-          if (set.delete(s) && !set.size) { this.byKey.delete(key); }
+          if (set.delete(s)) {
+            ours = true;
+            if (!set.size) { this.byKey.delete(key); }
+          }
         }
-        this.changed.fire();
+        // Other extensions' sessions don't change the status bar.
+        if (ours) { this.changed.fire(); }
       }),
     );
   }
@@ -610,7 +615,9 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   refreshUi();
-  void runtimes.get();
+  // Node detection spawns a `--version` per runtime/package manager: warm it only where npm configurations exist
+  // (otherwise it runs on demand when one is launched or the dialog opens).
+  if (store.list().some(c => c.kind === 'npm')) { void runtimes.get(); }
   void offerImport();
 }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+
+- Performance: launch.json is parsed once and cached (invalidated by the file watcher and on save) instead of on every status bar refresh.
+- The status bar only refreshes when one of its own debug sessions ends.
+- Node.js runtime detection runs at startup only in workspaces with npm configurations; elsewhere on demand.
+
 ## 0.4.1
 
 - `runConfigurations.npmConsole`: npm configurations (and *Current File* for JavaScript) can print to the Debug Console, like IntelliJ's Run window, instead of the integrated terminal. In the Debug Console the output of every process is captured (`outputCapture: "std"`) and colours are kept (`FORCE_COLOR=1`). Default stays the terminal.
