@@ -15,16 +15,21 @@ src/
 ├── project.ts    # "Project" node (.nvmrc/.node-version) and package manager (packageManager/lockfile)   (pure)
 ├── detect.ts     # node / npm / pnpm / yarn / bun discovery and `--version`                                (pure)
 ├── scriptAdapter.ts # inline debug adapter for `script-run`: spawns the script, streams output, stdin from the console, kills the process group (no vscode import, unit tested)
+├── runs.ts       # RunsModel: one run per top-level session (key `__runConfigKey`), output captured with a '*' DebugAdapterTracker (child sessions included), 2 MB per run
+├── runView.ts    # "Run" webview view (panel container `runConfigurations`): tabs, rerun/stop/clear/hot reload, stdin → `evaluate`; appends batched every 50 ms
+├── services.ts   # "Services" tree: configurations by kind, running state, inline actions
+├── ansi.ts       # ANSI SGR → spans (text + classes/hex colours) kept across chunks                       (pure)
 ├── devices.ts    # Flutter device selector: `flutter devices --machine` (≈15 s, cached + background refresh), emulators
 ├── flutter.ts    # flutter binary lookup, devices/emulators parsing                                        (pure)
 ├── intellij.ts   # `js.build_tools.npm` XML parsing, `.idea` / `.run` discovery                            (pure)
 └── test/         # node:test unit tests for the pure modules
+media/run.js, run.css         # Run window UI; output is only ever set with textContent
 media/editor.js, editor.css   # dialog UI (opened in a floating window via workbench.action.moveEditorToNewWindow), plain DOM, VS Code theme variables
 ```
 
 ## How a configuration runs
 
-`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); `deviceId` = device picked in `DeviceService` (none → Dart-Code's own). *Flutter Attach* sets `attach: true` → `request: attach` with `attachArgs`; it never stops the running app and uses the key `folder::name::attach`. `script-run` keeps its type: `buildScriptLaunch` resolves interpreter (`resolveInterpreter`: configured, else by extension, `.py` → `venv/`/`.venv/` Python), args, `cwd` (working dir or the script's) and env, and `ScriptDebugAdapter` (registered with `DebugAdapterInlineImplementation`) runs it. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
+`npm-run` is a contributed debug type with no adapter: `resolveDebugConfiguration` turns it into a js-debug `node` launch (`runtimeExecutable` = package manager, `runtimeArgs` = command + scripts + args, chosen node's dir prepended to PATH, `NODE_OPTIONS`, `console: integratedTerminal`). VS Code then resolves the new type. Run = `noDebug`. `flutter-run` works the same way into a Dart-Code `dart` launch (`program`, `cwd` = pubspec.yaml dir, `toolArgs` = run args + `--flavor`); `deviceId` = device picked in `DeviceService` (none → Dart-Code's own). *Flutter Attach* sets `attach: true` → `request: attach` with `attachArgs`; it never stops the running app and uses the key `folder::name::attach`. `script-run` keeps its type: `buildScriptLaunch` resolves interpreter (`resolveInterpreter`: configured, else by extension, `.py` → `venv/`/`.venv/` Python), args, `cwd` (working dir or the script's) and env, and `ScriptDebugAdapter` (registered with `DebugAdapterInlineImplementation`) runs it. `compound-run` has no session of its own: its resolver (and `launch()`) start the members (`expandCompound`: nested compounds flattened, cycles ignored) and return undefined; running/stop of a compound = its members' keys. With `runConfigurations.runWindow`, our launches set `internalConsoleOptions: neverOpen` (except terminal output) and the Run window shows the output. `RunConfig.kind` tells them apart; `normalize()` upgrades configurations saved before a field existed. Without *Allow multiple instances*, running sessions with the same `__runConfigKey` (`folder::name`) are stopped first.
 
 ## Commands
 

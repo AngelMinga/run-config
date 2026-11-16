@@ -7,7 +7,10 @@ import { DeviceService } from './devices';
 import { deviceIcon } from './flutter';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
-import { anchorPath, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, configKey, DEBUG_TYPE, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
+import { anchorPath, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, COMPOUND_TYPE, configKey, DEBUG_TYPE, expandCompound, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
+import { RunsModel, splitKey } from './runs';
+import { RunViewProvider } from './runView';
+import { ConfigNode, ServicesProvider } from './services';
 import { ScriptDebugAdapter } from './scriptAdapter';
 import { ancestors, flutterRoot, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
 import { ConfigStore, launchJsonPath, StoredConfig } from './store';
@@ -23,6 +26,13 @@ const SELECTED_KEY = 'runConfigurations.selected';
 const IMPORT_OFFERED_KEY = 'runConfigurations.importOffered';
 const RUNNABLE_FILE = /\.((m|c)?(j|t)s|dart)$/i;
 const DART_EXTENSION = 'Dart-Code.dart-code';
+
+/** With the Run window on, our sessions don't open the Debug Console: their output is in the Run window. */
+function quietConsole(launch: Record<string, unknown>): void {
+  if (launch.console !== 'integratedTerminal' && vscode.workspace.getConfiguration('runConfigurations').get<boolean>('runWindow', true)) {
+    launch.internalConsoleOptions = 'neverOpen';
+  }
+}
 const FLUTTER_EXTENSION = 'Dart-Code.flutter';
 
 /** Cached node / package manager detection (a few `--version` calls). */
@@ -100,7 +110,13 @@ class Sessions implements vscode.Disposable {
   }
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+/** Read-only view of the extension's state, for end-to-end tests. */
+export interface TestApi {
+  runs(): { key: string; name: string; running: boolean; exitCode?: number; text: string }[];
+  configs(): RunConfig[];
+}
+
+export function activate(context: vscode.ExtensionContext): TestApi {
   const store = new ConfigStore(context.workspaceState);
   const runtimes = new Runtimes();
   const sessions = new Sessions();
@@ -159,6 +175,7 @@ export function activate(context: vscode.ExtensionContext): void {
         ? 'internalConsole' : 'integratedTerminal';
       const launch = buildNodeLaunch(c, { node, packageManager: resolvePackageManager(c, node, ctx) }, process.env, process.platform, output);
       if (config.noDebug) { launch.noDebug = true; }
+      quietConsole(launch);
       return launch as vscode.DebugConfiguration;
     },
   }));
@@ -198,6 +215,7 @@ export function activate(context: vscode.ExtensionContext): void {
       // Attaching connects to the running app: never stop it, and track it apart from `flutter run`.
       if (attach) { launch.__runConfigKey = `${configKey(c)}::attach`; }
       if (config.noDebug) { launch.noDebug = true; }
+      quietConsole(launch);
       return launch as vscode.DebugConfiguration;
     },
   }));
@@ -225,11 +243,23 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const launch = buildScriptLaunch(c, fs.existsSync);
       if (config.noDebug) { launch.noDebug = true; }
+      quietConsole(launch);
       return launch as vscode.DebugConfiguration;
     },
   }));
   context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory(SCRIPT_TYPE, {
     createDebugAdapterDescriptor: () => new vscode.DebugAdapterInlineImplementation(new ScriptDebugAdapter()),
+  }));
+
+  // ---------- debug type: compound-run → starts its members (IntelliJ's Compound) ----------
+  context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(COMPOUND_TYPE, {
+    resolveDebugConfiguration: async (folder, config) => {
+      if (config.type !== COMPOUND_TYPE) { return config; }
+      const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
+      await launchCompound(fromLaunchEntry(config, folderPath, home, true), !config.noDebug);
+      // The compound itself has no session: its members do.
+      return undefined;
+    },
   }));
 
   const showConfigError = async (message: string, c: RunConfig) => {
@@ -261,6 +291,9 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showWarningMessage(t('Run configuration "{0}" no longer exists.', sel.name));
       return;
     }
+    if (c.kind === 'compound') {
+      return launchCompound(c, debug);
+    }
     if (attach && c.kind !== 'flutter') {
       void vscode.window.showWarningMessage(t('Attach is only available for Flutter configurations.'));
       return;
@@ -269,6 +302,33 @@ export function activate(context: vscode.ExtensionContext): void {
     // Attach always runs with the debugger: there is nothing to run "without debugging".
     await vscode.debug.startDebugging(wsFolder(c.folder), entry as vscode.DebugConfiguration, attach ? {} : options);
   };
+
+  /** Members of a compound: stored configurations or other launch.json entries of its folder. */
+  const compoundTargets = (c: RunConfig) => {
+    const others = store.others().filter(o => o.folder === c.folder);
+    return expandCompound(c, name => store.find(c.folder, name) ?? (others.some(o => o.name === name) ? { kind: 'launch' } : undefined));
+  };
+
+  const launchCompound = async (c: RunConfig, debug: boolean) => {
+    const { names, missing } = compoundTargets(c);
+    if (missing.length) {
+      void vscode.window.showWarningMessage(t('Compound "{0}": configurations not found: {1}', c.name, missing.join(', ')));
+    }
+    if (!names.length) {
+      void showConfigError(t('Compound "{0}" has no configurations to run.', c.name), c);
+      return;
+    }
+    // All at once, like IntelliJ.
+    await Promise.all(names.map(name => launch(
+      store.find(c.folder, name) ? { kind: 'npm', folder: c.folder, name } : { kind: 'launch', folder: c.folder, name }, debug)));
+  };
+
+  /** Keys whose sessions belong to a configuration (a compound: its members'). */
+  const sessionKeys = (c: RunConfig): string[] => (c.kind === 'compound'
+    ? compoundTargets(c).names.map(name => configKey({ folder: c.folder, name }))
+    : [configKey(c)]);
+  const isRunning = (c: RunConfig) => sessionKeys(c).some(k => sessions.running(k).length > 0);
+  const stopConfig = async (c: RunConfig) => { await Promise.all(sessionKeys(c).map(k => sessions.stop(k))); };
 
   const launchCurrentFile = async (options: vscode.DebugSessionOptions) => {
     const doc = vscode.window.activeTextEditor?.document;
@@ -300,12 +360,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const stop = async () => {
     const sel = getSelection();
-    if (sel?.kind === 'npm') {
-      const key = configKey(sel);
-      if (sessions.running(key).length) {
-        await sessions.stop(key);
-        return;
-      }
+    const c = sel?.kind === 'npm' ? store.find(sel.folder, sel.name) : undefined;
+    if (c && isRunning(c)) {
+      await stopConfig(c);
+      return;
     }
     await vscode.commands.executeCommand('workbench.action.debug.stop');
   };
@@ -329,19 +387,16 @@ export function activate(context: vscode.ExtensionContext): void {
         items.push({ label: `$(cloud-download) ${t('Import {0} configuration(s) from IntelliJ', importable)}`, action: 'import' });
       }
     }
-    for (const [kind, title] of [['npm', 'npm'], ['flutter', 'Flutter'], ['script', t('Scripts')]] as const) {
+    for (const [kind, title] of [['compound', t('Compound')], ['npm', 'npm'], ['flutter', 'Flutter'], ['script', t('Scripts')]] as const) {
       const group = all.filter(c => c.kind === kind);
       if (!group.length) { continue; }
       items.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
       for (const c of group) {
         const sel: Selection = { kind: 'npm', folder: c.folder, name: c.name };
-        const running = sessions.running(configKey(c)).length > 0;
+        const running = isRunning(c);
         items.push({
           label: `$(${running ? 'debug-restart' : kindIcon(c.kind)}) ${c.name}`,
-          description: (c.kind === 'flutter' ? path.basename(c.program)
-            : c.kind === 'script' ? [path.basename(c.program), c.arguments].filter(Boolean).join(' ')
-              : [c.command, c.scripts].filter(Boolean).join(' '))
-            + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
+          description: describe(c) + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
           detail: running ? t('Running') : undefined,
           picked: same(sel),
           sel,
@@ -420,7 +475,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       for (const project of projects) {
         for (const config of readIntellijConfigs(project, home)) {
-          const rel = path.relative(folder, anchorPath(config));
+          const rel = path.relative(folder, anchorPath({ ...config, folder: config.projectDir }));
           if (!rel.startsWith('..') && !path.isAbsolute(rel)) { out.push({ folder, config }); }
         }
       }
@@ -537,7 +592,8 @@ export function activate(context: vscode.ExtensionContext): void {
   function refreshUi(): void {
     const show = vscode.workspace.getConfiguration('runConfigurations').get<boolean>('showStatusBar', true) && store.folders().length > 0;
     const sel = getSelection();
-    const selectedRunning = sel?.kind === 'npm' && sessions.running(configKey(sel)).length > 0;
+    const selConfig = sel?.kind === 'npm' ? store.find(sel.folder, sel.name) : undefined;
+    const selectedRunning = !!selConfig && isRunning(selConfig);
     void vscode.commands.executeCommand('setContext', 'runConfigurations.running', sessions.any());
     void vscode.commands.executeCommand('setContext', 'runConfigurations.hasSelection', !!sel);
     const flutterSelected = sel?.kind === 'npm' && store.find(sel.folder, sel.name)?.kind === 'flutter';
@@ -597,6 +653,81 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  // ---------- Run window and Services ----------
+  const runs = new RunsModel();
+  const runView = new RunViewProvider(context.extensionUri, runs, {
+    rerun: async (run, debug) => {
+      const { folder, name, attach } = splitKey(run.key);
+      if (store.find(folder, name)) {
+        await launch({ kind: 'npm', folder, name }, debug, attach);
+      } else if (run.session) {
+        await vscode.debug.startDebugging(wsFolder(folder), run.session.configuration, { noDebug: !debug });
+      }
+    },
+    stop: async run => {
+      if (run.session) { await vscode.debug.stopDebugging(run.session); }
+    },
+    showTerminal: run => {
+      // js-debug names the terminal after the configuration.
+      const term = [...vscode.window.terminals].reverse().find(x => x.name === run.name || x.name.includes(run.name));
+      if (term) { term.show(); } else { void vscode.commands.executeCommand('workbench.action.terminal.focus'); }
+    },
+  });
+  const services = new ServicesProvider({
+    list: () => store.list(),
+    folders: () => store.folders(),
+    isRunning,
+    isSelected: c => { const sel = getSelection(); return sel?.kind === 'npm' && sel.folder === c.folder && sel.name === c.name; },
+    describe,
+    icon: kindIcon,
+  });
+  const servicesView = vscode.window.createTreeView(ServicesProvider.viewId, { treeDataProvider: services, showCollapseAll: true });
+  context.subscriptions.push(
+    runs, runView, servicesView,
+    vscode.window.registerWebviewViewProvider(RunViewProvider.viewId, runView, { webviewOptions: { retainContextWhenHidden: true } }),
+    store.onDidChange(() => services.refresh()),
+    sessions.onDidChange(() => services.refresh()),
+  );
+  const nodeConfig = (node?: ConfigNode): RunConfig | undefined => {
+    if (node?.config) { return node.config; }
+    const sel = getSelection();
+    return sel?.kind === 'npm' ? store.find(sel.folder, sel.name) : undefined;
+  };
+  const showOutput = (c: RunConfig) => {
+    const run = runs.forKey(configKey(c));
+    if (run) { runView.reveal(run.id); }
+  };
+
+  // ---------- commands ----------
+  context.subscriptions.push(
+    vscode.commands.registerCommand('runConfigurations.services.open', async (node?: ConfigNode) => {
+      const c = nodeConfig(node);
+      if (!c) { return; }
+      await setSelection({ kind: 'npm', folder: c.folder, name: c.name });
+      showOutput(c);
+    }),
+    vscode.commands.registerCommand('runConfigurations.services.run', async (node?: ConfigNode) => {
+      const c = nodeConfig(node);
+      if (c) { await setSelection({ kind: 'npm', folder: c.folder, name: c.name }); await launch({ kind: 'npm', folder: c.folder, name: c.name }, false); }
+    }),
+    vscode.commands.registerCommand('runConfigurations.services.debug', async (node?: ConfigNode) => {
+      const c = nodeConfig(node);
+      if (c) { await setSelection({ kind: 'npm', folder: c.folder, name: c.name }); await launch({ kind: 'npm', folder: c.folder, name: c.name }, true); }
+    }),
+    vscode.commands.registerCommand('runConfigurations.services.stop', async (node?: ConfigNode) => {
+      const c = nodeConfig(node);
+      if (c) { await stopConfig(c); }
+    }),
+    vscode.commands.registerCommand('runConfigurations.services.edit', (node?: ConfigNode) => {
+      const c = nodeConfig(node);
+      openEditor(c ? { kind: 'npm', folder: c.folder, name: c.name } : getSelection());
+    }),
+    vscode.commands.registerCommand('runConfigurations.stopAll', async () => {
+      await Promise.all(store.list().map(c => stopConfig(c)));
+    }),
+    vscode.commands.registerCommand('runConfigurations.showRunWindow', () => runView.reveal()),
+  );
+
   // ---------- commands ----------
   context.subscriptions.push(
     vscode.commands.registerCommand('runConfigurations.run', () => launch(getSelection(), false)),
@@ -619,10 +750,25 @@ export function activate(context: vscode.ExtensionContext): void {
   // (otherwise it runs on demand when one is launched or the dialog opens).
   if (store.list().some(c => c.kind === 'npm')) { void runtimes.get(); }
   void offerImport();
+
+  return {
+    runs: () => runs.list().map(r => ({ key: r.key, name: r.name, running: r.running, exitCode: r.exitCode, text: r.spans.map(x => x.text).join('') })),
+    configs: () => store.list(),
+  };
 }
 
 function kindIcon(kind: RunConfig['kind']): string {
-  return kind === 'flutter' ? 'device-mobile' : kind === 'script' ? 'terminal' : 'package';
+  return kind === 'flutter' ? 'device-mobile' : kind === 'script' ? 'terminal' : kind === 'compound' ? 'run-all' : 'package';
+}
+
+/** One-line summary of what a configuration runs. */
+function describe(c: RunConfig): string {
+  switch (c.kind) {
+    case 'flutter': return path.basename(c.program);
+    case 'script': return [path.basename(c.program), c.arguments].filter(Boolean).join(' ');
+    case 'compound': return c.members.join(', ');
+    default: return [c.command, c.scripts].filter(Boolean).join(' ');
+  }
 }
 
 export function deactivate(): void {

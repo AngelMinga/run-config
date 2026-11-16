@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,8 @@
     "onStartupFinished",
     "onDebugResolve:npm-run",
     "onDebugResolve:flutter-run",
-    "onDebugResolve:script-run"
+    "onDebugResolve:script-run",
+    "onDebugResolve:compound-run"
   ],
   "contributes": {
     "commands": [
@@ -92,6 +93,48 @@
         "title": "%command.selectDevice%",
         "category": "%category%",
         "icon": "$(device-mobile)"
+      },
+      {
+        "command": "runConfigurations.services.open",
+        "title": "%command.showOutput%",
+        "category": "%category%",
+        "icon": "$(output)"
+      },
+      {
+        "command": "runConfigurations.services.run",
+        "title": "%command.run.short%",
+        "category": "%category%",
+        "icon": "$(play)"
+      },
+      {
+        "command": "runConfigurations.services.debug",
+        "title": "%command.debug.short%",
+        "category": "%category%",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "runConfigurations.services.stop",
+        "title": "%command.stop%",
+        "category": "%category%",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "runConfigurations.services.edit",
+        "title": "%command.editConfig%",
+        "category": "%category%",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "runConfigurations.stopAll",
+        "title": "%command.stopAll%",
+        "category": "%category%",
+        "icon": "$(stop-circle)"
+      },
+      {
+        "command": "runConfigurations.showRunWindow",
+        "title": "%command.showRunWindow%",
+        "category": "%category%",
+        "icon": "$(output)"
       }
     ],
     "keybindings": [
@@ -146,6 +189,26 @@
         {
           "command": "runConfigurations.stop",
           "when": "runConfigurations.running"
+        },
+        {
+          "command": "runConfigurations.services.open",
+          "when": "false"
+        },
+        {
+          "command": "runConfigurations.services.run",
+          "when": "false"
+        },
+        {
+          "command": "runConfigurations.services.debug",
+          "when": "false"
+        },
+        {
+          "command": "runConfigurations.services.stop",
+          "when": "false"
+        },
+        {
+          "command": "runConfigurations.services.edit",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -153,6 +216,63 @@
           "command": "runConfigurations.select",
           "group": "navigation@-10",
           "when": "view == workbench.explorer.fileView"
+        },
+        {
+          "command": "runConfigurations.edit",
+          "when": "view == runConfigurations.services",
+          "group": "navigation@1"
+        },
+        {
+          "command": "runConfigurations.stopAll",
+          "when": "view == runConfigurations.services && runConfigurations.running",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "runConfigurations.services.run",
+          "when": "view == runConfigurations.services && viewItem =~ /^config\\.stopped/",
+          "group": "inline@1"
+        },
+        {
+          "command": "runConfigurations.services.debug",
+          "when": "view == runConfigurations.services && viewItem =~ /^config\\.stopped/",
+          "group": "inline@2"
+        },
+        {
+          "command": "runConfigurations.services.run",
+          "when": "view == runConfigurations.services && viewItem =~ /^config\\.running/",
+          "group": "inline@1"
+        },
+        {
+          "command": "runConfigurations.services.stop",
+          "when": "view == runConfigurations.services && viewItem =~ /^config\\.running/",
+          "group": "inline@3"
+        },
+        {
+          "command": "runConfigurations.services.run",
+          "when": "view == runConfigurations.services && viewItem =~ /^config/",
+          "group": "1_run@1"
+        },
+        {
+          "command": "runConfigurations.services.debug",
+          "when": "view == runConfigurations.services && viewItem =~ /^config/",
+          "group": "1_run@2"
+        },
+        {
+          "command": "runConfigurations.services.stop",
+          "when": "view == runConfigurations.services && viewItem =~ /^config\\.running/",
+          "group": "1_run@3"
+        },
+        {
+          "command": "runConfigurations.services.open",
+          "when": "view == runConfigurations.services && viewItem =~ /^config/",
+          "group": "2_view@1"
+        },
+        {
+          "command": "runConfigurations.services.edit",
+          "when": "view == runConfigurations.services && viewItem =~ /^config/",
+          "group": "2_view@2"
         }
       ]
     },
@@ -425,6 +545,41 @@
             }
           }
         ]
+      },
+      {
+        "type": "compound-run",
+        "label": "%debugger.compound.label%",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "configurations"
+            ],
+            "properties": {
+              "configurations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "%attr.configurations%"
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "%snippet.compound.label%",
+            "description": "%snippet.compound.description%",
+            "body": {
+              "type": "compound-run",
+              "request": "launch",
+              "name": "${1:All}",
+              "configurations": [
+                "${2:api}",
+                "${3:web}"
+              ]
+            }
+          }
+        ]
       }
     ],
     "configuration": {
@@ -463,8 +618,37 @@
             "%config.npmConsole.debugConsole%"
           ],
           "description": "%config.npmConsole%"
+        },
+        "runConfigurations.runWindow": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.runWindow%"
         }
       }
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "runConfigurations",
+          "title": "%container.services%",
+          "icon": "media/services.svg"
+        }
+      ]
+    },
+    "views": {
+      "runConfigurations": [
+        {
+          "id": "runConfigurations.services",
+          "name": "%view.services%",
+          "icon": "media/services.svg"
+        },
+        {
+          "id": "runConfigurations.output",
+          "name": "%view.run%",
+          "type": "webview",
+          "icon": "media/services.svg"
+        }
+      ]
     }
   },
   "scripts": {

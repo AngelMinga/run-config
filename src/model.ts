@@ -6,11 +6,13 @@ export const DEBUG_TYPE = 'npm-run';
 export const FLUTTER_TYPE = 'flutter-run';
 /** Debug type contributed in package.json; runs a script (Python, shell…) through the inline adapter in scriptAdapter.ts. */
 export const SCRIPT_TYPE = 'script-run';
+/** Debug type contributed in package.json; starts several configurations at once (IntelliJ's Compound). */
+export const COMPOUND_TYPE = 'compound-run';
 
-export type ConfigKind = 'npm' | 'flutter' | 'script';
+export type ConfigKind = 'npm' | 'flutter' | 'script' | 'compound';
 
 export function isRunType(type: unknown): boolean {
-  return type === DEBUG_TYPE || type === FLUTTER_TYPE || type === SCRIPT_TYPE;
+  return type === DEBUG_TYPE || type === FLUTTER_TYPE || type === SCRIPT_TYPE || type === COMPOUND_TYPE;
 }
 
 /** npm commands offered in the "Command" combo (same idea as IntelliJ's list). */
@@ -51,6 +53,8 @@ export interface RunConfig {
   interpreter: string;
   /** Script: working directory; '' → the script's directory. */
   workingDir: string;
+  /** Compound: names of the configurations (same workspace folder) started together, in order. */
+  members: string[];
 }
 
 export interface LaunchEntry {
@@ -82,13 +86,14 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     attachArgs: '',
     interpreter: '',
     workingDir: '',
+    members: [],
   };
 }
 
 /** Fills fields missing in configurations saved by older versions. */
 export function normalize(c: Partial<RunConfig> & { folder: string; name: string }): RunConfig {
   const base = emptyConfig(c.folder, c.name, c.kind ?? 'npm');
-  const out = { ...base, ...c, env: { ...(c.env ?? {}) } } as RunConfig;
+  const out = { ...base, ...c, env: { ...(c.env ?? {}) }, members: [...(c.members ?? [])] } as RunConfig;
   for (const k of Object.keys(base) as (keyof RunConfig)[]) {
     if (out[k] === undefined || out[k] === null) { (out as unknown as Record<string, unknown>)[k] = base[k]; }
   }
@@ -96,8 +101,8 @@ export function normalize(c: Partial<RunConfig> & { folder: string; name: string
 }
 
 /** The file that places a configuration in a project (package.json, the Dart entrypoint or the script). */
-export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program'>): string {
-  return c.kind === 'npm' ? c.packageJson : c.program;
+export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program' | 'folder'>): string {
+  return c.kind === 'npm' ? c.packageJson : c.kind === 'compound' ? c.folder : c.program;
 }
 
 export function configKey(c: { folder: string; name: string }): string {
@@ -135,6 +140,9 @@ export function portablePath(value: string, folder: string, home: string): strin
 }
 
 export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
+  if (c.kind === 'compound') {
+    return { type: COMPOUND_TYPE, request: 'launch', name: c.name, configurations: [...c.members] };
+  }
   if (c.kind === 'script') {
     const entry: LaunchEntry = {
       type: SCRIPT_TYPE,
@@ -195,6 +203,13 @@ export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home
   const scripts = Array.isArray(e.scripts) ? e.scripts.map(String).join(' ') : str(e.scripts);
   const args = Array.isArray(e.arguments) ? e.arguments.map(String).join(' ') : str(e.arguments);
   const expand = (v: string) => (v ? expandVars(v, folder, home) : v);
+  if (e.type === COMPOUND_TYPE) {
+    return {
+      ...emptyConfig(folder, str(e.name), 'compound'),
+      shared,
+      members: Array.isArray(e.configurations) ? e.configurations.filter((m): m is string => typeof m === 'string') : [],
+    };
+  }
   if (e.type === SCRIPT_TYPE) {
     return {
       ...emptyConfig(folder, str(e.name), 'script'),
@@ -456,4 +471,44 @@ export function tildify(p: string, home: string): string {
     return '~' + p.slice(home.length);
   }
   return p;
+}
+
+/** Renames compound members after configurations were renamed in a folder (`renames`: old name → new name). */
+export function renameMembers(configs: RunConfig[], folder: string, renames: Map<string, string>): void {
+  if (!renames.size) { return; }
+  for (const c of configs) {
+    if (c.kind === 'compound' && c.folder === folder) {
+      c.members = c.members.map(m => renames.get(m) ?? m);
+    }
+  }
+}
+
+/**
+ * Configurations a compound starts, flattened through nested compounds (each started once, cycles ignored).
+ * `lookup` finds a configuration by name in the compound's folder; unknown names are returned in `missing`.
+ */
+export function expandCompound(
+  root: Pick<RunConfig, 'name' | 'members'>,
+  lookup: (name: string) => { kind: string; members?: string[] } | undefined,
+): { names: string[]; missing: string[] } {
+  const names: string[] = [];
+  const missing: string[] = [];
+  const visiting = new Set<string>([root.name]);
+  const walk = (members: string[]) => {
+    for (const name of members) {
+      if (visiting.has(name) || names.includes(name)) { continue; }
+      const c = lookup(name);
+      if (!c) {
+        if (!missing.includes(name)) { missing.push(name); }
+      } else if (c.kind === 'compound') {
+        visiting.add(name);
+        walk(c.members ?? []);
+        visiting.delete(name);
+      } else {
+        names.push(name);
+      }
+    }
+  };
+  walk(root.members);
+  return { names, missing };
 }

@@ -52,6 +52,11 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
   const out: ImportedConfig[] = [];
   for (const m of xml.matchAll(/<configuration\b([^>]*?)(\/>|>([\s\S]*?)<\/configuration>)/g)) {
     const a = attrs(m[1]);
+    if (a.type === 'CompoundRunConfigurationType' && a.name && a.default !== 'true') {
+      const members = [...(m[3] ?? '').matchAll(/<toRun\b([^>]*?)\/?>/g)].map(r => attrs(r[1]).name).filter(Boolean);
+      out.push({ ...emptyConfig(projectDir, a.name, 'compound'), projectDir, shared, source, members });
+      continue;
+    }
     const flutter = a.type === 'FlutterRunConfigurationType';
     if ((a.type !== 'js.build_tools.npm' && !flutter) || a.default === 'true' || !a.name) {
       continue;

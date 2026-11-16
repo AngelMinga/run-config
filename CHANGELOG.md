@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- **Services panel** like IntelliJ: a *Services* tree with every configuration by type (running ones highlighted, inline Run/Debug/Stop/Edit, Stop All) and a *Run* window with one tab per run: captured output with ANSI colours, Rerun, Debug, Stop, Hot Reload/Restart (Flutter), scroll-to-end, soft-wrap, clear and stdin for scripts.
+- **Compound** configurations: start several configurations at once; Stop and Run/Debug act on all of them, nested compounds are flattened. `compound-run` launch type, IntelliJ `CompoundRunConfigurationType` import, and renames update the compounds that reference them.
+- New setting `runConfigurations.runWindow`.
+
 ## 0.4.2
 
 - Performance: launch.json is parsed once and cached (invalidated by the file watcher and on save) instead of on every status bar refresh.

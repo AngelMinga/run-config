@@ -44,5 +44,19 @@
   "snippet.script.description": "Ejecuta un script de Python o de shell, como las configuraciones Python / Shell Script de IntelliJ.",
   "config.npmConsole": "Dónde muestran su salida las configuraciones npm.",
   "config.npmConsole.terminal": "Terminal integrada (entrada interactiva, TTY completo).",
-  "config.npmConsole.debugConsole": "Debug Console, como la ventana Run de IntelliJ (salida de todos los procesos, con colores)."
+  "config.npmConsole.debugConsole": "Debug Console, como la ventana Run de IntelliJ (salida de todos los procesos, con colores).",
+  "container.services": "Services",
+  "view.services": "Services",
+  "view.run": "Run",
+  "command.showOutput": "Mostrar salida",
+  "command.run.short": "Ejecutar",
+  "command.debug.short": "Depurar",
+  "command.editConfig": "Editar configuración…",
+  "command.stopAll": "Detener todo",
+  "command.showRunWindow": "Mostrar la ventana Run",
+  "debugger.compound.label": "Compound (configuración de ejecución)",
+  "attr.configurations": "Nombres de las configuraciones (misma carpeta) que se inician juntas.",
+  "snippet.compound.label": "Compound: varias configuraciones a la vez (estilo IntelliJ)",
+  "snippet.compound.description": "Inicia varias configuraciones de ejecución a la vez.",
+  "settings.runWindow": "Mostrar la salida de las configuraciones en la ventana **Run** (panel Services), con una pestaña por ejecución, como IntelliJ. Las configuraciones npm que escriben en la terminal integrada (`runConfigurations.npmConsole`) mantienen ahí su salida."
 }

@@ -44,5 +44,19 @@
   "snippet.script.description": "Runs a Python or shell script, like IntelliJ's Python / Shell Script configurations.",
   "config.npmConsole": "Where npm configurations print their output.",
   "config.npmConsole.terminal": "Integrated terminal (interactive input, full TTY).",
-  "config.npmConsole.debugConsole": "Debug Console, like IntelliJ's Run window (output of all processes, colours kept)."
+  "config.npmConsole.debugConsole": "Debug Console, like IntelliJ's Run window (output of all processes, colours kept).",
+  "container.services": "Services",
+  "view.services": "Services",
+  "view.run": "Run",
+  "command.showOutput": "Show Output",
+  "command.run.short": "Run",
+  "command.debug.short": "Debug",
+  "command.editConfig": "Edit Configuration…",
+  "command.stopAll": "Stop All",
+  "command.showRunWindow": "Show Run Window",
+  "debugger.compound.label": "Compound (Run Configuration)",
+  "attr.configurations": "Names of the configurations (same folder) started together.",
+  "snippet.compound.label": "Compound: Run Configurations Together (IntelliJ-style)",
+  "snippet.compound.description": "Starts several run configurations at once.",
+  "settings.runWindow": "Show the output of run configurations in the **Run** window (Services panel), with one tab per run, like IntelliJ. npm configurations printing to the integrated terminal (`runConfigurations.npmConsole`) keep their output there."
 }

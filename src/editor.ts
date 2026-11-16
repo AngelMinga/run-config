@@ -28,6 +28,8 @@ type Incoming =
 /** Strings used by media/editor.js, translated here. */
 function strings(): Record<string, string> {
   const keys = [
+    'Compound', 'Run/Debug configurations to start together:', 'All checked configurations start at the same time, like IntelliJ\'s Compound.',
+    'No other configurations in this folder yet.', 'Stop and Run/Debug stop and start all of them.',
     'Run/Debug Configurations', 'Add New Configuration', 'Remove Configuration', 'Copy Configuration',
     'Name:', 'Allow multiple instances', 'Store as project file', 'Configuration', 'package.json:', 'Command:', 'Scripts:',
     'Arguments:', 'Node runtime:', 'Node options:', 'Package manager:', 'Environment:', 'Before launch:', 'Workspace folder:',
@@ -205,6 +207,11 @@ export class EditorPanel {
       }
       if (c.kind === 'script') {
         if (!c.program.trim()) { return t('Script path is required.'); }
+        continue;
+      }
+      if (c.kind === 'compound') {
+        if (!c.members.length) { return t('Compound "{0}" has no configurations to run.', c.name); }
+        if (c.members.includes(c.name)) { return t('Compound "{0}" cannot run itself.', c.name); }
         continue;
       }
       if (c.packageManager && !/[\\/]/.test(c.packageManager) && !['npm', 'pnpm', 'yarn', 'bun'].includes(packageManagerName(c.packageManager))) {

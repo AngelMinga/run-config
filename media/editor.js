@@ -46,6 +46,7 @@
     chevron: '<path d="m4 6 4 4 4-4"/>',
     script: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4 6 2.5 2L4 10M8 10.5h4"/>',
     folder: '<path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/>',
+    compound: '<path d="M2.5 3v10l5-5zM8.5 3v10l5-5z" fill="currentColor" stroke="none"/>',
     refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v2.5h-2.5"/>',
     link: '<path d="M9 3h4v4M13 3 7.5 8.5M11.5 9.5V13h-8.5V4.5H6.5"/>',
   };
@@ -56,7 +57,7 @@
   }
 
   const selected = () => S.configs.find(c => c.id === S.selectedId);
-  const withId = c => ({ ...c, env: { ...(c.env || {}) }, id: 'c' + S.nextId++ });
+  const withId = c => ({ ...c, env: { ...(c.env || {}) }, members: [...(c.members || [])], id: 'c' + S.nextId++ });
 
   function folderFor(packageJson, fallback) {
     let best = '';
@@ -70,11 +71,13 @@
     { kind: 'npm', icon: 'pkg', cls: 'npm' },
     { kind: 'flutter', icon: 'flutter', cls: 'flutter' },
     { kind: 'script', icon: 'script', cls: 'script' },
+    { kind: 'compound', icon: 'compound', cls: 'compound' },
   ];
   const kindOf = c => KINDS.find(k => k.kind === c.kind) || KINDS[0];
-  const anchor = c => (c.kind === 'npm' ? c.packageJson : c.program);
-  const kindLabel = k => t(k.kind === 'npm' ? 'npm' : k.kind === 'flutter' ? 'Flutter' : 'Script');
-  const groupLabel = k => t(k.kind === 'npm' ? 'npm' : k.kind === 'flutter' ? 'Flutter' : 'Scripts');
+  const anchor = c => (c.kind === 'npm' ? c.packageJson : c.kind === 'compound' ? (c.members || []).join(', ') : c.program);
+  const LABELS = { npm: ['npm', 'npm'], flutter: ['Flutter', 'Flutter'], script: ['Script', 'Scripts'], compound: ['Compound', 'Compound'] };
+  const kindLabel = k => t(LABELS[k.kind][0]);
+  const groupLabel = k => t(LABELS[k.kind][1]);
 
   function markDirty() {
     S.dirty = true;
@@ -205,8 +208,9 @@
       placeholder: opts && opts.placeholder,
       spellcheck: 'false',
       oninput: e => {
+        const prev = c[field];
         c[field] = opts && opts.path ? untilde(e.target.value.trim()) : e.target.value;
-        if (opts && opts.onChange) { opts.onChange(); }
+        if (opts && opts.onChange) { opts.onChange(prev); }
         markDirty();
       },
     });
@@ -284,8 +288,16 @@
     }
     const top = h('div', { class: 'top' },
       h('div', { class: 'row name' }, h('label', { for: 'f-name' }, t('Name:')),
-        h('div', { class: 'control' }, textInput(c, 'name', { onChange: renderSidebarSoon }))),
-      h('label', { class: 'check' }, h('input', {
+        h('div', { class: 'control' }, textInput(c, 'name', {
+          onChange: prev => {
+            // Compounds of the folder follow the rename (IntelliJ keeps them pointing at the configuration).
+            for (const o of S.configs) {
+              if (o.kind === 'compound' && o.folder === c.folder) { o.members = o.members.map(m => (m === prev ? c.name : m)); }
+            }
+            renderSidebarSoon();
+          },
+        }))),
+      c.kind === 'compound' ? null : h('label', { class: 'check' }, h('input', {
         type: 'checkbox', checked: c.allowMultiple, onchange: e => { c.allowMultiple = e.target.checked; markDirty(); },
       }), t('Allow multiple instances')),
       h('label', { class: 'check', title: c.shared ? t('Saved in .vscode/launch.json (shared with the team).') : t('Saved privately in this workspace (not committed).') },
@@ -311,6 +323,43 @@
     const beforeRow = () => row(t('Before launch:'), [textInput(c, 'preLaunchTask', { list: 'dl-tasks', placeholder: t('VS Code task to run before launch (preLaunchTask)') }),
       datalist('dl-tasks', S.tasks)], { for: 'f-preLaunchTask' });
     const help = text => h('div', { class: 'help' }, text);
+
+    if (c.kind === 'compound') {
+      const candidates = [
+        ...S.configs.filter(o => o !== c && o.folder === c.folder).map(o => ({ name: o.name, kind: kindOf(o) })),
+        ...S.others.filter(o => o.folder === c.folder).map(o => ({ name: o.name, kind: { icon: 'launch', cls: '' }, type: o.type })),
+      ];
+      // Members whose configuration no longer exists stay visible (unchecking removes them).
+      for (const m of c.members) {
+        if (!candidates.some(x => x.name === m)) { candidates.push({ name: m, kind: { icon: 'launch', cls: '' }, missing: true }); }
+      }
+      const list = h('div', { class: 'members', role: 'group', 'aria-label': t('Run/Debug configurations to start together:') },
+        candidates.length ? candidates.map(x => h('label', { class: 'member' + (x.missing ? ' missing' : '') },
+          h('input', {
+            type: 'checkbox', checked: c.members.includes(x.name),
+            onchange: e => {
+              const order = candidates.map(y => y.name);
+              const set = new Set(c.members);
+              if (e.target.checked) { set.add(x.name); } else { set.delete(x.name); }
+              c.members = order.filter(n => set.has(n));
+              markDirty();
+              renderSidebarSoon();
+            },
+          }),
+          icon(x.kind.icon, x.kind.cls), h('span', { class: 'label' }, x.name),
+          x.type ? h('span', { class: 'desc' }, x.type) : null,
+          x.missing ? h('span', { class: 'desc' }, t('not found')) : null))
+          : h('div', { class: 'empty' }, t('No other configurations in this folder yet.')));
+      formEl.append(top, hint, h('div', { class: 'panel compound' },
+        h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
+        folderRow(),
+        h('div', { class: 'members-title' }, t('Run/Debug configurations to start together:')),
+        list,
+        help(t('All checked configurations start at the same time, like IntelliJ\'s Compound.')),
+        help(t('Stop and Run/Debug stop and start all of them.')),
+      ));
+      return;
+    }
 
     if (c.kind === 'script') {
       formEl.append(top, hint, h('div', { class: 'panel' },
@@ -443,13 +492,14 @@
     const folder = ref ? ref.folder : (S.folders[0] && S.folders[0].path) || '';
     const flutter = kind === 'flutter';
     const script = kind === 'script';
+    const compound = kind === 'compound';
     const entry = flutter && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
     const c = withId({
-      kind: flutter ? 'flutter' : script ? 'script' : 'npm',
-      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
+      kind: flutter ? 'flutter' : script ? 'script' : compound ? 'compound' : 'npm',
+      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : compound ? t('Compound') : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
       packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
-      program: entry || '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '',
+      program: entry || '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '', members: [],
     });
     S.configs.push(c);
     markDirty();

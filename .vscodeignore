@@ -2,6 +2,9 @@
 !dist/extension.js
 !media/editor.js
 !media/editor.css
+!media/run.js
+!media/run.css
+!media/services.svg
 !package.json
 !package.nls.json
 !package.nls.es.json
