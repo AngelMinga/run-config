@@ -29,6 +29,14 @@ type Incoming =
 /** Strings used by media/editor.js, translated here. */
 function strings(): Record<string, string> {
   const keys = [
+    'Node.js', 'Jest / Vitest', 'Tests', 'Docker Compose', 'Attach to Node.js', 'Node interpreter:', "Empty: the file's directory.",
+    'JavaScript file:', 'Application parameters:', 'Host:', 'Port:', 'Reconnect automatically',
+    'Start the process with --inspect (or --inspect=0.0.0.0:9229 in a container) and attach with Debug.',
+    'Runner:', 'Detect from package.json', 'Project with the package.json; empty: the nearest one above the test file.',
+    'Test file:', 'Empty: all tests', 'Test name:', 'Empty: the whole file',
+    'Suite or test name; matches the full name like -t (a describe runs all its tests).', 'Runner options:',
+    'Compose file:', 'Services:', 'Empty: all services', 'Options:',
+    'Runs docker compose -f <file> <command> [options] [services]; Stop stops it like Ctrl+C.',
     'Folder name', 'Double-click to rename. Drop configurations here.', 'Move into New Folder', 'New Folder', 'Templates',
     'Back to configurations', 'Edit configuration templates…', 'Template: {0}',
     'New {0} configurations (from + or a ▷ in the editor) start with these values.', 'Env file:',
@@ -140,8 +148,11 @@ export class EditorPanel {
         return this.sendDetection(true);
       case 'inspect': {
         const ctx = await this.runtimes.context();
-        const c = m.config;
-        if (c.kind !== 'npm') { return; }
+        // Node.js and test configurations take their "Project" node from their directory's package.json.
+        const c = m.config.kind !== 'npm' && m.config.workingDir
+          ? { ...m.config, packageJson: path.join(m.config.workingDir, 'package.json') }
+          : m.config;
+        if (c.kind !== 'npm' && c.kind !== 'node' && c.kind !== 'test') { return; }
         const node = projectNode(c, ctx);
         const pmName = projectPackageManager(c.packageJson, c.folder);
         const effectiveNode = c.nodeRuntime || node.node?.path;
@@ -168,7 +179,9 @@ export class EditorPanel {
           canSelectFolders: folderPick,
           openLabel: t('Select'),
           filters: m.field === 'packageJson' ? { 'package.json': ['json'] }
-            : m.field === 'program' && m.kind !== 'script' ? { Dart: ['dart'] } : undefined,
+            : m.field === 'program' && m.kind === 'flutter' ? { Dart: ['dart'] }
+              : m.field === 'program' && m.kind === 'node' ? { JavaScript: ['js', 'mjs', 'cjs', 'ts', 'mts', 'cts'] }
+                : m.field === 'program' && m.kind === 'docker' ? { 'Compose': ['yml', 'yaml'] } : undefined,
         });
         if (picked?.[0]) {
           this.post({ type: 'browsed', field: m.field, value: picked[0].fsPath });
@@ -221,6 +234,10 @@ export class EditorPanel {
         if (!c.program.trim()) { return t('Script path is required.'); }
         continue;
       }
+      if (c.kind === 'node' && !c.program.trim()) { return t('JavaScript file is required.'); }
+      if (c.kind === 'docker' && !c.program.trim()) { return t('Compose file is required.'); }
+      if (c.kind === 'attach' && !/^\d{1,5}$/.test(c.port.trim())) { return t('"{0}": the port must be a number.', c.name); }
+      if (c.kind !== 'npm' && c.kind !== 'compound') { continue; }
       if (c.kind === 'compound') {
         if (!c.members.length) { return t('Compound "{0}" has no configurations to run.', c.name); }
         if (c.members.includes(c.name)) { return t('Compound "{0}" cannot run itself.', c.name); }

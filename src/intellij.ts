@@ -44,7 +44,83 @@ function childValue(body: string, tag: string): string {
   return m ? attrs(m[1]).value ?? '' : '';
 }
 
-/** Parses every non-template npm and Flutter run configuration in an IntelliJ XML file. */
+const SUPPORTED = new Set([
+  'js.build_tools.npm', 'FlutterRunConfigurationType', 'NodeJSConfigurationType', 'ChromiumRemoteDebugType',
+  'JavaScriptTestRunnerJest', 'JavaScriptTestRunnerVitest', 'docker-deploy', 'ShConfigurationType', 'PythonConfigurationType',
+]);
+
+/** Node.js, Attach, Jest/Vitest, Docker Compose, Shell Script and Python configurations (undefined for npm/Flutter). */
+function parseOtherType(
+  a: Record<string, string>, body: string, env: Record<string, string>, macros: (v: string) => string, projectDir: string,
+): RunConfig | undefined {
+  const path_ = (v: string | undefined) => (v ? macros(v) : '');
+  const inProject = (v: string) => (!v || path.isAbsolute(v) || v.startsWith('$') ? path_(v) : path.join(projectDir, v));
+  switch (a.type) {
+    case 'NodeJSConfigurationType': {
+      const dir = path_(a['working-dir']) || projectDir;
+      const file = a['path-to-js-file'] ?? '';
+      return {
+        ...emptyConfig(projectDir, a.name, 'node'), env,
+        program: !file ? '' : path.isAbsolute(file) || file.startsWith('$') ? path_(file) : path.join(dir, file),
+        workingDir: dir,
+        nodeOptions: a['node-parameters'] ?? '',
+        arguments: a['application-parameters'] ?? '',
+        nodeRuntime: !a['node-interpreter'] || a['node-interpreter'] === 'project' ? '' : path_(a['node-interpreter']),
+      };
+    }
+    case 'ChromiumRemoteDebugType':
+      return { ...emptyConfig(projectDir, a.name, 'attach'), host: a.host || 'localhost', port: a.port || '9229', reconnect: a.restartOnDisconnect !== 'false' };
+    case 'JavaScriptTestRunnerJest':
+    case 'JavaScriptTestRunnerVitest': {
+      const runner = a.type === 'JavaScriptTestRunnerVitest' ? 'vitest' : 'jest';
+      const node = childValue(body, 'node-interpreter');
+      const scope = childValue(body, 'scope-kind') || 'ALL';
+      const names = [...body.matchAll(/<test-name\b([^>]*?)\/?>/g)].map(n => attrs(n[1]).value).filter(Boolean);
+      return {
+        ...emptyConfig(projectDir, a.name, 'test'), env, runner,
+        workingDir: path_(childValue(body, 'working-dir')) || projectDir,
+        program: scope === 'ALL' ? '' : path_(childValue(body, 'test-file')),
+        // IntelliJ stores the suite/test path; -t matches the full name, so the joined path selects the same test.
+        testName: scope === 'SUITE' || scope === 'TEST' ? names.join(' ') : '',
+        arguments: childValue(body, `${runner}-options`),
+        nodeOptions: childValue(body, 'node-options'),
+        nodeRuntime: !node || node === 'project' ? '' : path_(node),
+      };
+    }
+    case 'docker-deploy': {
+      const services = [...(/<option\s+name="services"[^>]*>([\s\S]*?)<\/option>\s*(?=<option|<\/settings)/.exec(body)?.[1] ?? '')
+        .matchAll(/<option\b([^>]*?)\/?>/g)].map(o => attrs(o[1]).value).filter(Boolean);
+      return {
+        ...emptyConfig(projectDir, a.name, 'docker'), env,
+        program: inProject(optionValue(body, 'sourceFilePath') || 'docker-compose.yml'),
+        arguments: optionValue(body, 'commandLineOptions'),
+        services: services.join(' '),
+      };
+    }
+    case 'ShConfigurationType': {
+      const interpreter = optionValue(body, 'INTERPRETER_PATH');
+      return {
+        ...emptyConfig(projectDir, a.name, 'script'), env,
+        program: path_(optionValue(body, 'SCRIPT_PATH')),
+        arguments: optionValue(body, 'SCRIPT_OPTIONS'),
+        workingDir: path_(optionValue(body, 'SCRIPT_WORKING_DIRECTORY')),
+        // IntelliJ always stores an interpreter; the default shells are what the extension picks anyway.
+        interpreter: /^(\/bin\/(ba|z)?sh|)$/.test(interpreter) ? '' : interpreter,
+      };
+    }
+    case 'PythonConfigurationType':
+      return {
+        ...emptyConfig(projectDir, a.name, 'script'), env,
+        program: path_(optionValue(body, 'SCRIPT_NAME')),
+        arguments: optionValue(body, 'PARAMETERS'),
+        workingDir: path_(optionValue(body, 'WORKING_DIRECTORY')),
+        interpreter: optionValue(body, 'IS_MODULE_SDK') === 'true' ? '' : path_(optionValue(body, 'SDK_HOME')),
+      };
+  }
+  return undefined;
+}
+
+/** Parses every non-template run configuration of a supported type in an IntelliJ XML file. */
 export function parseIntellijXml(xml: string, projectDir: string, home: string, shared: boolean, source = ''): ImportedConfig[] {
   const macros = (v: string) => v
     .replace(/\$PROJECT_DIR\$/g, projectDir)
@@ -59,7 +135,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
       continue;
     }
     const flutter = a.type === 'FlutterRunConfigurationType';
-    if ((a.type !== 'js.build_tools.npm' && !flutter) || a.default === 'true' || !a.name) {
+    if (!SUPPORTED.has(a.type) || a.default === 'true' || !a.name) {
       continue;
     }
     const raw = m[3] ?? '';
@@ -71,6 +147,12 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
     for (const e of body.matchAll(/<env\b([^>]*?)\/?>/g)) {
       const ea = attrs(e[1]);
       if (ea.name) { env[ea.name] = ea.value ?? ''; }
+    }
+    const meta = { projectDir, shared, source, beforeLaunch, group: a.folderName ?? '', allowMultiple: a.allowRunningInParallel === 'true' };
+    const other = parseOtherType(a, body, env, macros, projectDir);
+    if (other) {
+      out.push({ ...other, ...meta, name: a.name });
+      continue;
     }
     if (flutter) {
       out.push({
@@ -85,6 +167,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
         attachArgs: optionValue(body, 'attachArgs'),
         env,
         beforeLaunch,
+        group: a.folderName ?? '',
       });
       continue;
     }
@@ -106,6 +189,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
       env,
       preLaunchTask: '',
       beforeLaunch,
+      group: a.folderName ?? '',
     });
   }
   return out;

@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -34,10 +34,14 @@
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "activationEvents": [
+    "onDebugResolve:attach-run",
     "onDebugResolve:compound-run",
+    "onDebugResolve:docker-run",
     "onDebugResolve:flutter-run",
+    "onDebugResolve:node-run",
     "onDebugResolve:npm-run",
     "onDebugResolve:script-run",
+    "onDebugResolve:test-run",
     "onStartupFinished"
   ],
   "contributes": {
@@ -152,6 +156,12 @@
         "title": "%command.runAnything%",
         "category": "%category%",
         "icon": "$(terminal)"
+      },
+      {
+        "command": "runConfigurations.exportIntellij",
+        "title": "%command.exportIntellij%",
+        "category": "%category%",
+        "icon": "$(export)"
       }
     ],
     "keybindings": [
@@ -261,6 +271,16 @@
           "command": "runConfigurations.runAnything",
           "when": "view == runConfigurations.services",
           "group": "navigation@0"
+        },
+        {
+          "command": "runConfigurations.importIntellij",
+          "when": "view == runConfigurations.services",
+          "group": "1_intellij@1"
+        },
+        {
+          "command": "runConfigurations.exportIntellij",
+          "when": "view == runConfigurations.services",
+          "group": "1_intellij@2"
         }
       ],
       "view/item/context": [
@@ -866,6 +886,590 @@
                 "${2:api}",
                 "${3:web}"
               ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "node-run",
+        "label": "%debugger.node.label%",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "%attr.node.program%"
+              },
+              "arguments": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.node.arguments%"
+              },
+              "nodeRuntime": {
+                "type": "string",
+                "description": "%attr.nodeRuntime%"
+              },
+              "nodeOptions": {
+                "type": "string",
+                "description": "%attr.node.options%"
+              },
+              "workingDir": {
+                "type": "string",
+                "description": "%attr.node.workingDir%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "%snippet.node.label%",
+            "description": "%snippet.node.description%",
+            "body": {
+              "type": "node-run",
+              "request": "launch",
+              "name": "${1:server}",
+              "program": "^\"\\${workspaceFolder}/${2:server.js}\""
+            }
+          }
+        ]
+      },
+      {
+        "type": "attach-run",
+        "label": "%debugger.attach.label%",
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {
+              "host": {
+                "type": "string",
+                "default": "localhost",
+                "description": "%attr.attach.host%"
+              },
+              "port": {
+                "type": [
+                  "string",
+                  "number"
+                ],
+                "default": "9229",
+                "description": "%attr.attach.port%"
+              },
+              "reconnect": {
+                "type": "boolean",
+                "default": true,
+                "description": "%attr.attach.reconnect%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "%snippet.attach.label%",
+            "description": "%snippet.attach.description%",
+            "body": {
+              "type": "attach-run",
+              "request": "launch",
+              "name": "${1:Attach}",
+              "port": "${2:9229}"
+            }
+          }
+        ]
+      },
+      {
+        "type": "test-run",
+        "label": "%debugger.test.label%",
+        "configurationAttributes": {
+          "launch": {
+            "required": [],
+            "properties": {
+              "runner": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "jest",
+                  "vitest"
+                ],
+                "description": "%attr.test.runner%"
+              },
+              "workingDir": {
+                "type": "string",
+                "description": "%attr.test.workingDir%"
+              },
+              "testFile": {
+                "type": "string",
+                "description": "%attr.test.file%"
+              },
+              "testName": {
+                "type": "string",
+                "description": "%attr.test.name%"
+              },
+              "arguments": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.test.arguments%"
+              },
+              "nodeRuntime": {
+                "type": "string",
+                "description": "%attr.nodeRuntime%"
+              },
+              "nodeOptions": {
+                "type": "string",
+                "description": "%attr.nodeOptions%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "%snippet.test.label%",
+            "description": "%snippet.test.description%",
+            "body": {
+              "type": "test-run",
+              "request": "launch",
+              "name": "${1:tests}",
+              "testFile": "^\"\\${workspaceFolder}/${2:src/app.test.ts}\""
+            }
+          }
+        ]
+      },
+      {
+        "type": "docker-run",
+        "label": "%debugger.docker.label%",
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "composeFile"
+            ],
+            "properties": {
+              "composeFile": {
+                "type": "string",
+                "description": "%attr.docker.file%"
+              },
+              "command": {
+                "type": "string",
+                "default": "up",
+                "examples": [
+                  "up",
+                  "down",
+                  "build",
+                  "pull",
+                  "restart",
+                  "logs"
+                ],
+                "description": "%attr.docker.command%"
+              },
+              "services": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.docker.services%"
+              },
+              "arguments": {
+                "type": [
+                  "string",
+                  "array"
+                ],
+                "description": "%attr.docker.arguments%"
+              },
+              "env": {
+                "type": "object",
+                "description": "%attr.env%",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
+              },
+              "allowMultipleInstances": {
+                "type": "boolean",
+                "description": "%attr.allowMultiple%",
+                "default": false
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "%snippet.docker.label%",
+            "description": "%snippet.docker.description%",
+            "body": {
+              "type": "docker-run",
+              "request": "launch",
+              "name": "${1:compose up}",
+              "composeFile": "^\"\\${workspaceFolder}/${2:docker-compose.yml}\""
             }
           }
         ]

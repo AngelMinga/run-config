@@ -121,7 +121,7 @@ export class ConfigStore implements vscode.Disposable {
   templates(): Templates {
     const raw = this.state.get<Templates>(TEMPLATES_KEY, {});
     const out: Templates = {};
-    for (const kind of ['npm', 'flutter', 'script'] as const) {
+    for (const kind of ['npm', 'node', 'test', 'flutter', 'script', 'docker', 'attach'] as const) {
       if (raw[kind]) { out[kind] = normalize({ ...raw[kind]!, kind, folder: raw[kind]!.folder ?? '', name: '' }); }
     }
     return out;

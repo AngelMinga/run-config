@@ -9,11 +9,21 @@ export const FLUTTER_TYPE = 'flutter-run';
 export const SCRIPT_TYPE = 'script-run';
 /** Debug type contributed in package.json; starts several configurations at once (IntelliJ's Compound). */
 export const COMPOUND_TYPE = 'compound-run';
+/** IntelliJ's "Node.js": runs a JS/TS file with node (js-debug `node` launch). */
+export const NODE_TYPE = 'node-run';
+/** IntelliJ's "Attach to Node.js/Chrome": attaches js-debug to an inspector port. */
+export const ATTACH_TYPE = 'attach-run';
+/** IntelliJ's "Jest" / "Vitest": a test file, suite or test through the project's runner. */
+export const TEST_TYPE = 'test-run';
+/** IntelliJ's "Docker Compose": `docker compose up` of a compose file (through the script adapter). */
+export const DOCKER_TYPE = 'docker-run';
 
-export type ConfigKind = 'npm' | 'flutter' | 'script' | 'compound';
+export type ConfigKind = 'npm' | 'flutter' | 'script' | 'compound' | 'node' | 'attach' | 'test' | 'docker';
+
+const RUN_TYPES = new Set([DEBUG_TYPE, FLUTTER_TYPE, SCRIPT_TYPE, COMPOUND_TYPE, NODE_TYPE, ATTACH_TYPE, TEST_TYPE, DOCKER_TYPE]);
 
 export function isRunType(type: unknown): boolean {
-  return type === DEBUG_TYPE || type === FLUTTER_TYPE || type === SCRIPT_TYPE || type === COMPOUND_TYPE;
+  return typeof type === 'string' && RUN_TYPES.has(type);
 }
 
 /** npm commands offered in the "Command" combo (same idea as IntelliJ's list). */
@@ -64,6 +74,16 @@ export interface RunConfig {
   envFile: string;
   /** Folder of the configuration in the dialog/Services list (IntelliJ's run configuration folders). '' → none. */
   group: string;
+  /** Attach: inspector host and port, reconnect when the process restarts. */
+  host: string;
+  port: string;
+  reconnect: boolean;
+  /** Test: `jest`, `vitest` or '' (detected from the project). `program` = test file ('' → all), `workingDir` = project. */
+  runner: string;
+  /** Test: name (or pattern) of the suite/test to run ('' → the whole file). */
+  testName: string;
+  /** Docker Compose: services to start, space separated ('' → all). `program` = compose file, `command` = up/down… */
+  services: string;
 }
 
 export interface LaunchEntry {
@@ -100,6 +120,13 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     temporary: false,
     envFile: '',
     group: '',
+    host: 'localhost',
+    port: '9229',
+    reconnect: true,
+    runner: '',
+    testName: '',
+    services: '',
+    ...(kind === 'docker' ? { command: 'up', program: path.join(folder, 'docker-compose.yml') } : {}),
   };
 }
 
@@ -127,8 +154,11 @@ export function normalize(c: Partial<RunConfig> & { folder: string; name: string
 }
 
 /** The file that places a configuration in a project (package.json, the Dart entrypoint or the script). */
-export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program' | 'folder'>): string {
-  return c.kind === 'npm' ? c.packageJson : c.kind === 'compound' ? c.folder : c.program;
+export function anchorPath(c: Pick<RunConfig, 'kind' | 'packageJson' | 'program' | 'folder'> & { workingDir?: string }): string {
+  if (c.kind === 'npm') { return c.packageJson; }
+  if (c.kind === 'compound' || c.kind === 'attach') { return c.folder; }
+  if (c.kind === 'test') { return c.program || c.workingDir || c.folder; }
+  return c.program;
 }
 
 export function configKey(c: { folder: string; name: string }): string {
@@ -173,6 +203,46 @@ export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
 }
 
 function toLaunchFields(c: RunConfig, home: string): LaunchEntry {
+  const port = (p: string) => portablePath(p, c.folder, home);
+  const common = (entry: LaunchEntry): LaunchEntry => {
+    if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
+    if (c.allowMultiple) { entry.allowMultipleInstances = true; }
+    if (c.beforeLaunch.length) { entry.beforeLaunch = serializeSteps(c.beforeLaunch, port); }
+    return entry;
+  };
+  const set = (entry: LaunchEntry, key: string, value: string | undefined) => { if (value) { entry[key] = value; } };
+  if (c.kind === 'node') {
+    const entry: LaunchEntry = { type: NODE_TYPE, request: 'launch', name: c.name, program: port(c.program) };
+    set(entry, 'arguments', c.arguments);
+    set(entry, 'nodeRuntime', c.nodeRuntime && port(c.nodeRuntime));
+    set(entry, 'nodeOptions', c.nodeOptions);
+    set(entry, 'workingDir', c.workingDir && port(c.workingDir));
+    return common(entry);
+  }
+  if (c.kind === 'attach') {
+    const entry: LaunchEntry = { type: ATTACH_TYPE, request: 'launch', name: c.name, host: c.host || 'localhost', port: c.port || '9229' };
+    if (!c.reconnect) { entry.reconnect = false; }
+    if (c.beforeLaunch.length) { entry.beforeLaunch = serializeSteps(c.beforeLaunch, port); }
+    return entry;
+  }
+  if (c.kind === 'test') {
+    const entry: LaunchEntry = { type: TEST_TYPE, request: 'launch', name: c.name };
+    set(entry, 'runner', c.runner);
+    set(entry, 'workingDir', c.workingDir && port(c.workingDir));
+    set(entry, 'testFile', c.program && port(c.program));
+    set(entry, 'testName', c.testName);
+    set(entry, 'arguments', c.arguments);
+    set(entry, 'nodeRuntime', c.nodeRuntime && port(c.nodeRuntime));
+    set(entry, 'nodeOptions', c.nodeOptions);
+    return common(entry);
+  }
+  if (c.kind === 'docker') {
+    const entry: LaunchEntry = { type: DOCKER_TYPE, request: 'launch', name: c.name, composeFile: port(c.program) };
+    if (c.command && c.command !== 'up') { entry.command = c.command; }
+    set(entry, 'services', c.services);
+    set(entry, 'arguments', c.arguments);
+    return common(entry);
+  }
   if (c.kind === 'compound') {
     return { type: COMPOUND_TYPE, request: 'launch', name: c.name, configurations: [...c.members] };
   }
@@ -238,6 +308,29 @@ export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home
 }
 
 function fromLaunchFields(e: Record<string, unknown>, folder: string, home: string, shared: boolean): RunConfig {
+  const text = (v: unknown) => (Array.isArray(v) ? v.map(String).join(' ') : str(v));
+  const xp = (v: unknown) => (str(v) ? expandVars(str(v), folder, home) : '');
+  const envOf = () => {
+    const env: Record<string, string> = {};
+    if (e.env && typeof e.env === 'object') {
+      for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) { if (v !== null && v !== undefined) { env[k] = String(v); } }
+    }
+    return env;
+  };
+  const base = (kind: ConfigKind) => ({ ...emptyConfig(folder, str(e.name), kind), shared, allowMultiple: e.allowMultipleInstances === true, env: envOf() });
+  switch (e.type) {
+    case NODE_TYPE:
+      return { ...base('node'), program: xp(e.program), arguments: text(e.arguments), nodeRuntime: xp(e.nodeRuntime), nodeOptions: str(e.nodeOptions), workingDir: xp(e.workingDir) };
+    case ATTACH_TYPE:
+      return { ...base('attach'), host: str(e.host) || 'localhost', port: String(e.port ?? '') || '9229', reconnect: e.reconnect !== false };
+    case TEST_TYPE:
+      return {
+        ...base('test'), runner: str(e.runner), workingDir: xp(e.workingDir), program: xp(e.testFile), testName: str(e.testName),
+        arguments: text(e.arguments), nodeRuntime: xp(e.nodeRuntime), nodeOptions: str(e.nodeOptions),
+      };
+    case DOCKER_TYPE:
+      return { ...base('docker'), program: xp(e.composeFile), command: str(e.command) || 'up', services: text(e.services), arguments: text(e.arguments) };
+  }
   const env: Record<string, string> = {};
   if (e.env && typeof e.env === 'object') {
     for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) {
@@ -559,6 +652,10 @@ export function expandCompound(
 
 /** Fields a template sets on new configurations of its kind (IntelliJ's "Edit configuration templates…"). */
 export const TEMPLATE_FIELDS: Record<ConfigKind, (keyof RunConfig)[]> = {
+  node: ['allowMultiple', 'arguments', 'nodeRuntime', 'nodeOptions', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
+  attach: ['host', 'port', 'reconnect', 'beforeLaunch'],
+  test: ['runner', 'arguments', 'nodeRuntime', 'nodeOptions', 'env', 'envFile', 'beforeLaunch'],
+  docker: ['command', 'arguments', 'env', 'envFile', 'beforeLaunch'],
   npm: ['allowMultiple', 'command', 'arguments', 'nodeRuntime', 'nodeOptions', 'packageManager', 'env', 'envFile', 'beforeLaunch'],
   flutter: ['allowMultiple', 'runArgs', 'attachArgs', 'flavor', 'env', 'envFile', 'beforeLaunch'],
   script: ['allowMultiple', 'arguments', 'interpreter', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
@@ -575,4 +672,114 @@ export function applyTemplate(c: RunConfig, template: Partial<RunConfig> | undef
     out[f] = Array.isArray(v) ? v.map(x => (typeof x === 'object' ? { ...x } : x)) : typeof v === 'object' && v ? { ...v } : v;
   }
   return out as unknown as RunConfig;
+}
+
+/** Node env with the chosen node first in PATH, NODE_OPTIONS and FORCE_COLOR for internal-console output. */
+function nodeEnv(c: RunConfig, node: string | undefined, baseEnv: NodeJS.ProcessEnv, platform: NodeJS.Platform, output: NpmConsole) {
+  const env: Record<string, string | null> = { ...c.env };
+  if (node) {
+    const pathKey = platform === 'win32' ? Object.keys(baseEnv).find(k => k.toLowerCase() === 'path') ?? 'Path' : 'PATH';
+    const current = c.env[pathKey] ?? baseEnv[pathKey] ?? '';
+    env[pathKey] = path.dirname(node) + (current ? (platform === 'win32' ? ';' : ':') + current : '');
+  }
+  if (output === 'internalConsole' && !('FORCE_COLOR' in c.env)) { env.FORCE_COLOR = '1'; }
+  return env;
+}
+
+/** IntelliJ's Node.js configuration → js-debug launch of the file. */
+export function buildNodeFileLaunch(
+  c: RunConfig, node: string | undefined, baseEnv: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform, output: NpmConsole = 'integratedTerminal',
+): Record<string, unknown> {
+  const launch: Record<string, unknown> = {
+    type: 'node',
+    request: 'launch',
+    name: c.name,
+    program: c.program,
+    args: splitArgs(c.arguments),
+    cwd: c.workingDir || path.dirname(c.program),
+    runtimeArgs: splitArgs(c.nodeOptions),
+    env: nodeEnv(c, node, baseEnv, platform, output),
+    console: output,
+    skipFiles: ['<node_internals>/**'],
+    __runConfigKey: configKey(c),
+  };
+  if (node) { launch.runtimeExecutable = node; }
+  if (output === 'internalConsole') { launch.outputCapture = 'std'; }
+  return launch;
+}
+
+/** IntelliJ's Attach to Node.js → js-debug attach to the inspector port. */
+export function buildAttachLaunch(c: RunConfig): Record<string, unknown> {
+  return {
+    type: 'node',
+    request: 'attach',
+    name: c.name,
+    address: c.host || 'localhost',
+    port: parseInt(c.port, 10) || 9229,
+    restart: c.reconnect,
+    skipFiles: ['<node_internals>/**'],
+    __runConfigKey: configKey(c),
+  };
+}
+
+/** A test name used as a `-t` pattern: regex characters escaped. */
+export function escapeTestName(name: string): string {
+  return name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Runner arguments for a test configuration (file, test name, options); `debug` serialises Jest. */
+export function testArgs(c: RunConfig, runner: 'jest' | 'vitest', projectDir: string, debug: boolean): string[] {
+  const out: string[] = runner === 'vitest' ? ['run'] : [];
+  if (c.program) {
+    if (runner === 'jest') {
+      out.push('--runTestsByPath', c.program);
+    } else {
+      const rel = path.relative(projectDir, c.program);
+      out.push(rel && !rel.startsWith('..') ? rel.split(path.sep).join('/') : c.program);
+    }
+  }
+  if (c.testName) { out.push('-t', escapeTestName(c.testName)); }
+  if (debug && runner === 'jest') { out.push('--runInBand'); }
+  out.push(...splitArgs(c.arguments));
+  return out;
+}
+
+/** IntelliJ's Jest/Vitest configuration → js-debug launch of the runner's JS entry in the project. */
+export function buildTestLaunch(
+  c: RunConfig, runner: { name: 'jest' | 'vitest'; js: string }, projectDir: string, node: string | undefined, debug: boolean,
+  baseEnv: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform, output: NpmConsole = 'integratedTerminal',
+): Record<string, unknown> {
+  const launch: Record<string, unknown> = {
+    type: 'node',
+    request: 'launch',
+    name: c.name,
+    program: runner.js,
+    args: testArgs(c, runner.name, projectDir, debug),
+    cwd: projectDir,
+    runtimeArgs: splitArgs(c.nodeOptions),
+    env: nodeEnv(c, node, baseEnv, platform, output),
+    console: output,
+    autoAttachChildProcesses: true,
+    skipFiles: ['<node_internals>/**', '**/node_modules/**'],
+    __runConfigKey: configKey(c),
+  };
+  if (node) { launch.runtimeExecutable = node; }
+  if (output === 'internalConsole') { launch.outputCapture = 'std'; }
+  return launch;
+}
+
+/** IntelliJ's Docker Compose → `docker compose -f <file> <command> [options] [services]` through the script adapter. */
+export function buildDockerLaunch(c: RunConfig, docker = 'docker'): Record<string, unknown> {
+  return {
+    type: SCRIPT_TYPE,
+    request: 'launch',
+    name: c.name,
+    command: docker,
+    args: ['compose', '-f', c.program, c.command || 'up', ...splitArgs(c.arguments), ...splitArgs(c.services)],
+    cwd: path.dirname(c.program),
+    env: { ...c.env },
+    __runConfigKey: configKey(c),
+    __resolvedScript: true,
+  };
 }

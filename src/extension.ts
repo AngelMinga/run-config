@@ -7,15 +7,18 @@ import { DeviceService } from './devices';
 import { deviceIcon } from './flutter';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
+import { ATTACH_TYPE, buildAttachLaunch, buildDockerLaunch, buildNodeFileLaunch, buildTestLaunch, DOCKER_TYPE, NODE_TYPE, TEST_TYPE } from './model';
 import { anchorPath, applyTemplate, emptyConfig, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, COMPOUND_TYPE, configKey, DEBUG_TYPE, expandCompound, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
 import { RunsModel, splitKey } from './runs';
 import { RunAnything } from './runAnything';
 import { runBeforeLaunch, BeforeLaunchHost } from './beforeLaunchRunner';
 import { mergeEnv, parseDotenv } from './dotenv';
-import { dartEntries, EntryPoint, packageJsonEntries, pythonEntries, shellEntries } from './entryPoints';
+import { runFileName, toIntellijXml } from './intellijExport';
+import { dartEntries, dockerEntries, EntryPoint, testEntries, packageJsonEntries, pythonEntries, shellEntries } from './entryPoints';
 import { RunViewProvider } from './runView';
 import { ConfigNode, ServicesProvider } from './services';
 import { ScriptDebugAdapter } from './scriptAdapter';
+import { findTestRunner, nearestPackageDir } from './project';
 import { ancestors, flutterRoot, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
 import { ConfigStore, launchJsonPath, StoredConfig, Templates } from './store';
 
@@ -30,6 +33,8 @@ const SELECTED_KEY = 'runConfigurations.selected';
 const IMPORT_OFFERED_KEY = 'runConfigurations.importOffered';
 const RUNNABLE_FILE = /\.((m|c)?(j|t)s|dart)$/i;
 const DART_EXTENSION = 'Dart-Code.dart-code';
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/i;
+const COMPOSE_FILE = /^(docker-)?compose(\.[\w-]+)?\.ya?ml$/i;
 
 /** With the Run window on, our sessions don't open the Debug Console: their output is in the Run window. */
 function quietConsole(launch: Record<string, unknown>): void {
@@ -309,6 +314,64 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     return askRerun(c.name);
   };
 
+  /**
+   * Resolver shared by Node.js, Attach, Test and Docker: env file, Stop and Rerun?, before launch, single instance,
+   * then `build` turns the configuration into the real launch (undefined: error already shown).
+   */
+  const registerRunType = (type: string, build: (c: RunConfig, config: vscode.DebugConfiguration) => Promise<Record<string, unknown> | undefined>) => {
+    context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(type, {
+      resolveDebugConfiguration: async (folder, config) => {
+        if (config.type !== type) { return config; }
+        const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
+        const c = fromLaunchEntry(config, folderPath, home, true);
+        if (!c.name) { c.name = config.name || type; }
+        if (!loadEnvFile(c)) { return undefined; }
+        if (!(await confirmRerun(c, config))) { return undefined; }
+        if (!(await runBeforeLaunch(c, beforeHost))) { return undefined; }
+        if (!c.allowMultiple) { await sessions.stop(configKey(c)); }
+        const launch = await build(c, config);
+        if (!launch) { return undefined; }
+        // Attaching is always debugging.
+        if (config.noDebug && c.kind !== 'attach') { launch.noDebug = true; }
+        quietConsole(launch);
+        return launch as vscode.DebugConfiguration;
+      },
+    }));
+  };
+  const consoleSetting = () => (vscode.workspace.getConfiguration('runConfigurations').get<string>('npmConsole') === 'internalConsole'
+    ? 'internalConsole' as const : 'integratedTerminal' as const);
+  const nodeFor = async (c: RunConfig, dir: string) =>
+    c.nodeRuntime || projectNode({ packageJson: path.join(dir, 'package.json'), folder: c.folder }, await runtimes.context()).node?.path;
+
+  registerRunType(NODE_TYPE, async c => {
+    if (!c.program || !fs.existsSync(c.program)) {
+      void showConfigError(t('JavaScript file not found: {0}', c.program || '—'), c);
+      return undefined;
+    }
+    return buildNodeFileLaunch(c, await nodeFor(c, c.workingDir || path.dirname(c.program)), process.env, process.platform, consoleSetting());
+  });
+  registerRunType(ATTACH_TYPE, async c => buildAttachLaunch(c));
+  registerRunType(TEST_TYPE, async (c, config) => {
+    if (c.program && !fs.existsSync(c.program)) {
+      void showConfigError(t('Test file not found: {0}', c.program), c);
+      return undefined;
+    }
+    const projectDir = c.workingDir || nearestPackageDir(c.program ? path.dirname(c.program) : c.folder, c.folder) || c.folder;
+    const runner = findTestRunner(projectDir, c.folder, c.runner);
+    if (!runner) {
+      void showConfigError(t('Neither Jest nor Vitest was found in the node_modules of {0}.', projectDir), c);
+      return undefined;
+    }
+    return buildTestLaunch(c, runner, projectDir, await nodeFor(c, projectDir), !config.noDebug, process.env, process.platform, consoleSetting());
+  });
+  registerRunType(DOCKER_TYPE, async c => {
+    if (!c.program || !fs.existsSync(c.program)) {
+      void showConfigError(t('Compose file not found: {0}', c.program || '—'), c);
+      return undefined;
+    }
+    return buildDockerLaunch(c);
+  });
+
   const showConfigError = async (message: string, c: RunConfig) => {
     const edit = t('Edit Configuration');
     if (await vscode.window.showErrorMessage(message, edit) === edit) {
@@ -442,7 +505,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
         items.push({ label: `$(cloud-download) ${t('Import {0} configuration(s) from IntelliJ', importable)}`, action: 'import' });
       }
     }
-    for (const [kind, title] of [['compound', t('Compound')], ['npm', 'npm'], ['flutter', 'Flutter'], ['script', t('Scripts')]] as const) {
+    for (const [kind, title] of KIND_GROUPS.map(([k, label]) => [k, label()] as const)) {
       const group = all.filter(c => c.kind === kind);
       if (!group.length) { continue; }
       items.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
@@ -548,11 +611,20 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     return out;
   };
 
-  const sameRun = (a: RunConfig, b: RunConfig) => a.kind === b.kind && a.folder === b.folder && (a.kind === 'flutter'
-    ? a.program === b.program && a.runArgs === b.runArgs && a.flavor === b.flavor
-    : a.kind === 'script'
-      ? a.program === b.program && a.arguments === b.arguments && a.interpreter === b.interpreter
-      : a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments);
+  /** Two configurations run the same thing (import de-duplication, ▷ reuse). */
+  const sameRun = (a: RunConfig, b: RunConfig): boolean => {
+    if (a.kind !== b.kind || a.folder !== b.folder) { return false; }
+    switch (a.kind) {
+      case 'flutter': return a.program === b.program && a.runArgs === b.runArgs && a.flavor === b.flavor;
+      case 'script': return a.program === b.program && a.arguments === b.arguments && a.interpreter === b.interpreter;
+      case 'node': return a.program === b.program && a.arguments === b.arguments;
+      case 'attach': return a.host === b.host && a.port === b.port;
+      case 'test': return a.program === b.program && a.testName === b.testName && (a.workingDir || '') === (b.workingDir || '');
+      case 'docker': return a.program === b.program && a.services === b.services && a.command === b.command;
+      case 'compound': return a.name === b.name;
+      default: return a.packageJson === b.packageJson && a.command === b.command && a.scripts === b.scripts && a.arguments === b.arguments;
+    }
+  };
 
   const importIntellij = async (fromPrompt: boolean): Promise<number> => {
     const existing = store.list();
@@ -851,6 +923,14 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       const name = dir === folder ? entry.script : `${path.basename(dir)} ${entry.script}`;
       return { ...emptyConfig(folder, name), packageJson: file, command: 'run', scripts: entry.script };
     }
+    if (entry.kind === 'test') {
+      const name = entry.name ? `${path.basename(file)} › ${entry.name}` : path.basename(file);
+      return { ...emptyConfig(folder, name, 'test'), program: file, testName: entry.name, workingDir: nearestPackageDir(path.dirname(file), folder) ?? folder };
+    }
+    if (entry.kind === 'docker') {
+      const name = entry.service ? `${path.basename(file)} › ${entry.service}` : path.basename(file);
+      return { ...emptyConfig(folder, name, 'docker'), program: file, services: entry.service };
+    }
     return { ...emptyConfig(folder, path.basename(file), entry.kind), program: file };
   };
 
@@ -861,7 +941,8 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     try { return /sdk:\s*flutter/.test(fs.readFileSync(path.join(root, 'pubspec.yaml'), 'utf8')); } catch { return false; }
   };
   context.subscriptions.push(lensChanged, store.onDidChange(() => lensChanged.fire()), vscode.languages.registerCodeLensProvider(
-    [{ pattern: '**/package.json' }, { language: 'dart' }, { language: 'python' }, { language: 'shellscript' }],
+    [{ pattern: '**/package.json' }, { language: 'dart' }, { language: 'python' }, { language: 'shellscript' },
+      { pattern: '**/*.{test,spec}.{js,jsx,ts,tsx,mjs,cjs,mts,cts}' }, { pattern: '**/*compose*.{yml,yaml}' }],
     {
       onDidChangeCodeLenses: lensChanged.event,
       provideCodeLenses: doc => {
@@ -869,7 +950,10 @@ export function activate(context: vscode.ExtensionContext): TestApi {
         const file = doc.uri.fsPath;
         const text = doc.getText();
         const folder = vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath ?? path.dirname(file);
-        const entries = path.basename(file) === 'package.json' ? packageJsonEntries(text)
+        const base = path.basename(file);
+        const entries = base === 'package.json' ? packageJsonEntries(text)
+          : TEST_FILE.test(base) ? testEntries(text)
+          : COMPOSE_FILE.test(base) ? dockerEntries(text)
           : doc.languageId === 'dart' ? (isFlutterApp(file, folder) ? dartEntries(text) : [])
             : doc.languageId === 'python' ? pythonEntries(text)
               : doc.languageId === 'shellscript' ? shellEntries(text) : [];
@@ -903,8 +987,45 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     icon: kindIcon,
   });
 
+  // ---------- Export to IntelliJ ----------
+  const exportIntellij = async () => {
+    const all = store.list();
+    const candidates = all.filter(c => !c.temporary);
+    if (!candidates.length) {
+      void vscode.window.showInformationMessage(t('There are no configurations to export.'));
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(candidates.map(c => ({
+      label: `$(${kindIcon(c.kind)}) ${c.name}`, description: describe(c), picked: true, config: c,
+    })), { canPickMany: true, placeHolder: t('Configurations to write as IntelliJ project files (.run/*.run.xml)') });
+    if (!picked?.length) { return; }
+    const files = picked.map(p => ({
+      file: path.join(p.config.folder, '.run', runFileName(p.config.name)),
+      xml: toIntellijXml(p.config, all, home),
+    }));
+    const changed = files.filter(f => fs.existsSync(f.file) && fs.readFileSync(f.file, 'utf8') !== f.xml);
+    if (changed.length) {
+      const overwrite = t('Overwrite');
+      const answer = await vscode.window.showWarningMessage(
+        t('{0} file(s) in .run already exist and will be replaced: {1}', changed.length, changed.map(f => path.basename(f.file)).join(', ')),
+        { modal: true }, overwrite);
+      if (answer !== overwrite) { return; }
+    }
+    for (const f of files) {
+      fs.mkdirSync(path.dirname(f.file), { recursive: true });
+      fs.writeFileSync(f.file, f.xml);
+    }
+    const reveal = t('Show Files');
+    const answer = await vscode.window.showInformationMessage(
+      t('Exported {0} configuration(s) to .run/ — IntelliJ loads them as project run configurations.', files.length), reveal);
+    if (answer === reveal) {
+      await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(files[0].file));
+    }
+  };
+
   // ---------- commands ----------
   context.subscriptions.push(
+    vscode.commands.registerCommand('runConfigurations.exportIntellij', exportIntellij),
     vscode.commands.registerCommand('runConfigurations.runAnything', () => runAnything.show()),
     vscode.commands.registerCommand('runConfigurations.runEntry', (candidate: RunConfig, debug: boolean) => runEntry(candidate, debug)),
     vscode.commands.registerCommand('runConfigurations.saveTemporary', async (node?: ConfigNode) => {
@@ -973,16 +1094,35 @@ export function activate(context: vscode.ExtensionContext): TestApi {
   };
 }
 
+/** Selector/Services groups, in display order. */
+const KIND_GROUPS: [RunConfig['kind'], () => string][] = [
+  ['compound', () => t('Compound')], ['npm', () => 'npm'], ['node', () => 'Node.js'], ['test', () => t('Tests')],
+  ['flutter', () => 'Flutter'], ['script', () => t('Scripts')], ['docker', () => 'Docker Compose'], ['attach', () => t('Attach to Node.js')],
+];
+
 function kindIcon(kind: RunConfig['kind']): string {
-  return kind === 'flutter' ? 'device-mobile' : kind === 'script' ? 'terminal' : kind === 'compound' ? 'run-all' : 'package';
+  switch (kind) {
+    case 'flutter': return 'device-mobile';
+    case 'script': return 'terminal';
+    case 'compound': return 'run-all';
+    case 'node': return 'file-code';
+    case 'attach': return 'plug';
+    case 'test': return 'beaker';
+    case 'docker': return 'server-process';
+    default: return 'package';
+  }
 }
 
 /** One-line summary of what a configuration runs. */
 function describe(c: RunConfig): string {
   switch (c.kind) {
     case 'flutter': return path.basename(c.program);
-    case 'script': return [path.basename(c.program), c.arguments].filter(Boolean).join(' ');
+    case 'script':
+    case 'node': return [path.basename(c.program), c.arguments].filter(Boolean).join(' ');
     case 'compound': return c.members.join(', ');
+    case 'attach': return `${c.host || 'localhost'}:${c.port || '9229'}`;
+    case 'test': return [c.program ? path.basename(c.program) : t('all tests'), c.testName && `› ${c.testName}`].filter(Boolean).join(' ');
+    case 'docker': return ['compose', c.command || 'up', c.services].filter(Boolean).join(' ');
     default: return [c.command, c.scripts].filter(Boolean).join(' ');
   }
 }

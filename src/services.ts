@@ -32,8 +32,12 @@ type Node = GroupNode | FolderNode | ConfigNode;
 const GROUPS: { kind: ConfigKind; label: () => string }[] = [
   { kind: 'compound', label: () => t('Compound') },
   { kind: 'npm', label: () => 'npm' },
+  { kind: 'node', label: () => 'Node.js' },
+  { kind: 'test', label: () => t('Tests') },
   { kind: 'flutter', label: () => 'Flutter' },
   { kind: 'script', label: () => t('Scripts') },
+  { kind: 'docker', label: () => 'Docker Compose' },
+  { kind: 'attach', label: () => t('Attach to Node.js') },
 ];
 
 /** IntelliJ's Services tool window: every configuration by type, running ones highlighted, with inline actions. */

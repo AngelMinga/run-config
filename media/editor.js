@@ -48,6 +48,10 @@
     folder: '<path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/>',
     compound: '<path d="M2.5 3v10l5-5zM8.5 3v10l5-5z" fill="currentColor" stroke="none"/>',
     up: '<path d="m4 10 4-4 4 4"/>',
+    node: '<path d="M8 1.8 13.5 5v6L8 14.2 2.5 11V5z"/><path d="M6.2 6.2v3.6M9.8 6.6c-.9-.6-2-.3-2 .4 0 1.2 2.2.6 2.2 1.9 0 .8-1.2 1.1-2.2.5"/>',
+    plug: '<path d="M6 2v3M10 2v3M4.5 5h7v2.5a3.5 3.5 0 0 1-7 0zM8 11v3"/>',
+    beaker: '<path d="M6 2h4M6.5 2v4.5L3 13a1 1 0 0 0 .9 1.5h8.2A1 1 0 0 0 13 13L9.5 6.5V2M4.5 10.5h7"/>',
+    docker: '<rect x="2" y="7" width="12" height="5" rx="1"/><path d="M4 7V5h2v2M6 7V5h2v2M8 7V5h2v2M7 5V3h2v2"/>',
     down: '<path d="m4 6 4 4 4-4"/>',
     globe: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c-2 2.8-2 8.2 0 11M8 2.5c2 2.8 2 8.2 0 11"/>',
     task: '<path d="M3 4.5h10M3 8h10M3 11.5h6"/>',
@@ -79,12 +83,22 @@
   const KINDS = [
     { kind: 'npm', icon: 'pkg', cls: 'npm' },
     { kind: 'flutter', icon: 'flutter', cls: 'flutter' },
+    { kind: 'node', icon: 'node', cls: 'node' },
+    { kind: 'test', icon: 'beaker', cls: 'test' },
     { kind: 'script', icon: 'script', cls: 'script' },
+    { kind: 'docker', icon: 'docker', cls: 'docker' },
+    { kind: 'attach', icon: 'plug', cls: 'attach' },
     { kind: 'compound', icon: 'compound', cls: 'compound' },
   ];
   const kindOf = c => KINDS.find(k => k.kind === c.kind) || KINDS[0];
-  const anchor = c => (c.kind === 'npm' ? c.packageJson : c.kind === 'compound' ? (c.members || []).join(', ') : c.program);
-  const LABELS = { npm: ['npm', 'npm'], flutter: ['Flutter', 'Flutter'], script: ['Script', 'Scripts'], compound: ['Compound', 'Compound'] };
+  const anchor = c => (c.kind === 'npm' ? c.packageJson : c.kind === 'compound' ? (c.members || []).join(', ')
+    : c.kind === 'attach' ? `${c.host}:${c.port}` : c.program || c.workingDir || c.folder);
+  const LABELS = {
+    npm: ['npm', 'npm'], flutter: ['Flutter', 'Flutter'], script: ['Script', 'Scripts'], compound: ['Compound', 'Compound'],
+    node: ['Node.js', 'Node.js'], test: ['Jest / Vitest', 'Tests'], docker: ['Docker Compose', 'Docker Compose'], attach: ['Attach to Node.js', 'Attach to Node.js'],
+  };
+  /** Kinds whose form has a Node interpreter (needs the "Project" node inspection). */
+  const NODE_KINDS = ['npm', 'node', 'test'];
   const kindLabel = k => t(LABELS[k.kind][0]);
   const groupLabel = k => t(LABELS[k.kind][1]);
 
@@ -97,7 +111,7 @@
   // ---------- inspection (scripts, "Project" node / package manager) ----------
   let inspectTimer;
   function requestInspect(c) {
-    if (c.kind !== 'npm') { return; }
+    if (!NODE_KINDS.includes(c.kind)) { return; }
     clearTimeout(inspectTimer);
     inspectTimer = setTimeout(() => {
       vscode.postMessage({ type: 'inspect', id: c.id, config: strip(c) });
@@ -334,6 +348,10 @@
 
   // Template fields per kind: keep in sync with TEMPLATE_FIELDS in src/model.ts.
   const TEMPLATE_FIELDS = {
+    node: ['allowMultiple', 'arguments', 'nodeRuntime', 'nodeOptions', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
+    attach: ['host', 'port', 'reconnect', 'beforeLaunch'],
+    test: ['runner', 'arguments', 'nodeRuntime', 'nodeOptions', 'env', 'envFile', 'beforeLaunch'],
+    docker: ['command', 'arguments', 'env', 'envFile', 'beforeLaunch'],
     npm: ['allowMultiple', 'command', 'arguments', 'nodeRuntime', 'nodeOptions', 'packageManager', 'env', 'envFile', 'beforeLaunch'],
     flutter: ['allowMultiple', 'runArgs', 'attachArgs', 'flavor', 'env', 'envFile', 'beforeLaunch'],
     script: ['allowMultiple', 'arguments', 'interpreter', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
@@ -346,6 +364,8 @@
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
       program: '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '', members: [],
       beforeLaunch: [], temporary: false, envFile: '', group: '',
+      host: 'localhost', port: '9229', reconnect: true, runner: '', testName: '', services: '',
+      ...(kind === 'docker' ? { command: 'up', program: folder ? joinPath(folder, 'docker-compose.yml') : '' } : {}),
     };
   }
   function applyTemplate(c) {
@@ -359,7 +379,7 @@
   }
   function loadTemplates(templates) {
     S.templateObjs = {};
-    for (const k of ['npm', 'flutter', 'script']) {
+    for (const k of ['npm', 'node', 'test', 'flutter', 'script', 'docker', 'attach']) {
       S.templateObjs[k] = withId({ ...blankConfig(k, ''), ...((templates || {})[k] || {}), kind: k, name: '' });
     }
   }
@@ -659,6 +679,82 @@
       return;
     }
 
+    const panelOf = (...rows) => h('div', { class: 'panel' }, h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))), folderRow(), ...rows);
+    const fileRow = (label, field, opts) => (tpl ? null : row(label, [textInput(c, field, {
+      path: true, placeholder: opts && opts.placeholder, list: opts && opts.list, onChange: () => {
+        const folder = folderFor(c[field], c.folder);
+        if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
+      },
+    }), browseBtn(field), opts && opts.datalist], { for: 'f-' + field }));
+    const nodeRows = () => [
+      row(t('Node interpreter:'), [runtimeSelect(c, 'nodeRuntime', nodeOptions),
+        h('button', { class: 'browse', title: t('Refresh'), 'aria-label': t('Refresh'), onclick: () => { S.detection = null; refreshRuntimeSelects(); vscode.postMessage({ type: 'refresh' }); } }, icon('refresh'))],
+      { for: 'f-nodeRuntime' }),
+      row(t('Node options:'), textInput(c, 'nodeOptions'), { for: 'f-nodeOptions' }),
+    ];
+
+    if (c.kind === 'node') {
+      formEl.append(top, hint, panelOf(
+        ...nodeRows(),
+        row(t('Working directory:'), [textInput(c, 'workingDir', { path: true }), browseBtn('workingDir')], { for: 'f-workingDir' }),
+        help(t("Empty: the file's directory.")),
+        fileRow(t('JavaScript file:'), 'program', { placeholder: 'server.js' }),
+        row(t('Application parameters:'), textInput(c, 'arguments'), { for: 'f-arguments' }),
+        envRow(t('Environment variables:')),
+        envFileRow(),
+        beforeRow(),
+      ));
+      return;
+    }
+
+    if (c.kind === 'attach') {
+      formEl.append(top, hint, panelOf(
+        row(t('Host:'), textInput(c, 'host', { placeholder: 'localhost' }), { for: 'f-host' }),
+        row(t('Port:'), textInput(c, 'port', { placeholder: '9229' }), { for: 'f-port' }),
+        help(t('Start the process with --inspect (or --inspect=0.0.0.0:9229 in a container) and attach with Debug.')),
+        h('label', { class: 'check standalone' }, h('input', {
+          type: 'checkbox', checked: c.reconnect, onchange: e => { c.reconnect = e.target.checked; markDirty(); },
+        }), t('Reconnect automatically')),
+        beforeRow(),
+      ));
+      return;
+    }
+
+    if (c.kind === 'test') {
+      formEl.append(top, hint, panelOf(
+        row(t('Runner:'), h('select', {
+          id: 'f-runner', onchange: e => { c.runner = e.target.value; markDirty(); },
+        }, [['', t('Detect from package.json')], ['jest', 'Jest'], ['vitest', 'Vitest']].map(([v, l]) => h('option', { value: v, selected: v === (c.runner || '') }, l))),
+        { for: 'f-runner' }),
+        tpl ? null : row(t('Working directory:'), [textInput(c, 'workingDir', { path: true }), browseBtn('workingDir')], { for: 'f-workingDir' }),
+        tpl ? null : help(t('Project with the package.json; empty: the nearest one above the test file.')),
+        fileRow(t('Test file:'), 'program', { placeholder: t('Empty: all tests') }),
+        tpl ? null : row(t('Test name:'), textInput(c, 'testName', { placeholder: t('Empty: the whole file') }), { for: 'f-testName' }),
+        tpl ? null : help(t('Suite or test name; matches the full name like -t (a describe runs all its tests).')),
+        row(t('Runner options:'), textInput(c, 'arguments', { placeholder: '--coverage' }), { for: 'f-arguments' }),
+        ...nodeRows(),
+        envRow(t('Environment variables:')),
+        envFileRow(),
+        beforeRow(),
+      ));
+      return;
+    }
+
+    if (c.kind === 'docker') {
+      formEl.append(top, hint, panelOf(
+        fileRow(t('Compose file:'), 'program', { placeholder: 'docker-compose.yml' }),
+        row(t('Command:'), [textInput(c, 'command', { list: 'dl-compose' }),
+          datalist('dl-compose', ['up', 'down', 'build', 'pull', 'restart', 'logs', 'run'])], { for: 'f-command' }),
+        tpl ? null : row(t('Services:'), textInput(c, 'services', { placeholder: t('Empty: all services') }), { for: 'f-services' }),
+        row(t('Options:'), textInput(c, 'arguments', { placeholder: '--build' }), { for: 'f-arguments' }),
+        help(t('Runs docker compose -f <file> <command> [options] [services]; Stop stops it like Ctrl+C.')),
+        envRow(t('Environment variables:')),
+        envFileRow(),
+        beforeRow(),
+      ));
+      return;
+    }
+
     if (c.kind === 'script') {
       formEl.append(top, hint, h('div', { class: 'panel' },
         h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
@@ -779,7 +875,7 @@
     renderForm();
     renderFooter();
     const c = selected();
-    if (c && c.kind === 'npm' && !S.inspected[c.id]) { requestInspect(c); }
+    if (c && NODE_KINDS.includes(c.kind) && !S.inspected[c.id]) { requestInspect(c); }
   }
 
   function uniqueName(base, folder) {
@@ -791,23 +887,21 @@
   function addConfig(kind) {
     const ref = selected();
     const folder = ref ? ref.folder : (S.folders[0] && S.folders[0].path) || '';
-    const flutter = kind === 'flutter';
-    const script = kind === 'script';
-    const compound = kind === 'compound';
-    const entry = flutter && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
-    const realKind = flutter ? 'flutter' : script ? 'script' : compound ? 'compound' : 'npm';
+    const realKind = KINDS.some(k => k.kind === kind) ? kind : 'npm';
+    const entry = realKind === 'flutter'
+      && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
+    const base = realKind === 'flutter' ? baseName(entry) || 'main.dart'
+      : realKind === 'npm' ? t('Unnamed') : realKind === 'script' ? t('Script') : kindLabel(kindOf({ kind: realKind }));
     // New configurations start from their kind's template, like IntelliJ.
-    const c = withId(applyTemplate({
-      ...blankConfig(realKind, folder),
-      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : compound ? t('Compound') : t('Unnamed'), folder),
-      program: entry || '',
-    }));
+    const blank = blankConfig(realKind, folder);
+    const c = withId(applyTemplate({ ...blank, name: uniqueName(base, folder), program: entry || blank.program }));
     S.configs.push(c);
     markDirty();
     selectConfig(c.id);
     const name = document.getElementById('f-name');
     if (name) { name.focus(); name.select(); }
   }
+
 
   function removeConfig() {
     const i = S.configs.findIndex(c => c.id === S.selectedId);

@@ -145,3 +145,38 @@ export function flutterRoot(program: string, stopDir: string): string | undefine
   }
   return undefined;
 }
+
+/** Directory of the nearest package.json above `start` (the test project), else undefined. */
+export function nearestPackageDir(start: string, stopDir: string): string | undefined {
+  for (const dir of ancestors(start, stopDir)) {
+    if (fs.existsSync(path.join(dir, 'package.json'))) { return dir; }
+  }
+  return undefined;
+}
+
+const RUNNER_ENTRIES: Record<'jest' | 'vitest', string[]> = {
+  jest: ['node_modules/jest/bin/jest.js', 'node_modules/jest-cli/bin/jest.js'],
+  vitest: ['node_modules/vitest/vitest.mjs'],
+};
+
+/** Test runner of a project: the configured one, else from package.json dependencies (vitest first), found in node_modules. */
+export function findTestRunner(projectDir: string, stopDir: string, preferred: string): { name: 'jest' | 'vitest'; js: string } | undefined {
+  let order: ('jest' | 'vitest')[] = preferred === 'jest' || preferred === 'vitest' ? [preferred] : ['vitest', 'jest'];
+  if (!preferred) {
+    try {
+      const pkg = JSON.parse(read(path.join(projectDir, 'package.json')) ?? '{}');
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps.jest && !deps.vitest) { order = ['jest', 'vitest']; }
+    } catch { /* keep the default order */ }
+  }
+  // Monorepos hoist runners to the root node_modules: walk up.
+  for (const dir of ancestors(projectDir, stopDir)) {
+    for (const name of order) {
+      for (const rel of RUNNER_ENTRIES[name]) {
+        const js = path.join(dir, ...rel.split('/'));
+        if (fs.existsSync(js)) { return { name, js }; }
+      }
+    }
+  }
+  return undefined;
+}

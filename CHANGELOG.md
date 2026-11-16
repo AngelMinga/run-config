@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+
+- New configuration types: **Node.js** (`node-run`), **Jest / Vitest** (`test-run`, runner detected in node_modules), **Docker Compose** (`docker-run`) and **Attach to Node.js** (`attach-run`), with dialog forms, templates, selector/Services groups and launch.json IntelliSense.
+- ▷ Run | Debug on Jest/Vitest `describe`/`it`/`test` (and the whole file) and on compose `services:` / each service.
+- **Export to IntelliJ**: `.run/*.run.xml` for every type, with folders and before-launch steps; the IntelliJ import now also reads Node.js, Jest, Vitest, Shell Script, Python, Docker Compose and Attach configurations and `folderName`.
+
 ## 0.7.0
 
 - **Env file** (`envFile`) for npm, Flutter and Script configurations, dotenv format with `${VAR}` expansion; the configuration's `env` wins.

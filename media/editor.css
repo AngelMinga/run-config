@@ -424,3 +424,11 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-off
 .templates-link { margin: 8px 12px 10px; align-self: flex-start; }
 .tpl-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1em; }
 .hint.tpl { margin-left: 0; }
+
+/* ---------- Node.js, tests, Docker, attach ---------- */
+.icon.node { color: #8cc84b; }
+.icon.test { color: var(--vscode-testing-iconPassed, #73c991); }
+.icon.docker { color: #2496ed; }
+.icon.attach { color: var(--vscode-debugIcon-startForeground, #89d185); }
+.check.standalone { margin: 6px 0 2px 116px; }
+@media (max-width: 640px) { .check.standalone { margin-left: 0; } }

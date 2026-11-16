@@ -1,6 +1,6 @@
 # Run Configurations (IntelliJ-style)
 
-IntelliJ / WebStorm-style **run configurations** for VS Code: **npm**, **Flutter**, **Script** (Python, shell, Node…) and **Compound**.
+IntelliJ / WebStorm-style **run configurations** for VS Code: **npm**, **Node.js**, **Jest / Vitest**, **Flutter**, **Script** (Python, shell…), **Docker Compose**, **Attach to Node.js** and **Compound**.
 
 - **Selector in the status bar** with the active configuration and ▷ Run, 🐞 Debug and ■ Stop buttons.
 - **Run/Debug Configurations dialog**, in its own floating window like IntelliJ (`runConfigurations.floatingDialog`), with `+` → *npm* / *Flutter*. npm has the same fields as IntelliJ: name, *Allow multiple instances*, *Store as project file*, package.json, command, scripts, arguments, Node runtime, Node options, package manager, environment and *Before launch*.
@@ -18,9 +18,14 @@ IntelliJ / WebStorm-style **run configurations** for VS Code: **npm**, **Flutter
 - **Stop and Rerun?** — running a configuration that is already running asks first (*Stop and Rerun* / *Don't Ask Again*), unless it allows multiple instances. Compounds ask once; the Run window's Rerun never asks.
 - **Folders and order** in the dialog's list: *Move into New Folder* (rename with a double-click), drag & drop or Alt+↑/↓ to reorder. Order and folders are kept in launch.json (`group`) and shown in Services and the selector.
 - **Run Anything** (`⌃⌥⇧R`, or the terminal icon in Services): type any command (`pnpm dev`, `flutter doctor`, `python main.py`…) and it runs in the Run window with the project's node first in PATH; also offers recent commands, configurations and `package.json` scripts. (IntelliJ's double-Ctrl can't be bound in VS Code.)
+- **Node.js**: JavaScript/TypeScript file, application parameters, Node interpreter and parameters, working directory.
+- **Jest / Vitest**: all tests, a file, a suite or a single test with the project's runner (found in `node_modules`, hoisted monorepos included); Debug runs Jest in band. ▷ Run | Debug above every `describe`/`it`/`test` and on the file.
+- **Docker Compose**: `docker compose -f <file> up [options] [services]`, ▷ on `services:` and on each service; Stop stops it like Ctrl+C.
+- **Attach to Node.js**: attach the debugger to a process started with `--inspect` (host, port, reconnect).
+- **Export to IntelliJ** (Services ⋯ menu or *Export Run Configurations to IntelliJ*): writes `.run/<name>.run.xml`, IntelliJ's *Store as project file* format, for every type (Python scripts as Python configurations, other scripts as Shell Script), with folders and before-launch steps. The importer reads all these types back.
 - **Detected Node.js runtimes and package managers** (nvm, fnm, volta, asdf, mise, Homebrew, PATH) with their versions. *Project* uses `.nvmrc` / `.node-version` and the project's lockfile or `packageManager` field.
 - **IntelliJ shortcuts**: `⌃R` run, `⌃D` debug, `⌘F2` stop, `⌃⌥R` choose configuration (macOS); `Shift+F10`, `Shift+F9`, `Ctrl+F2`, `Alt+Shift+F10` on Windows/Linux.
-- **Import from IntelliJ** (npm and Flutter): reads `.idea/workspace.xml`, `.idea/runConfigurations/*.xml` and `.run/*.run.xml`.
+- **Import from IntelliJ** (npm, Node.js, Jest, Vitest, Flutter, Shell Script, Python, Docker Compose, Attach, Compound): reads `.idea/workspace.xml`, `.idea/runConfigurations/*.xml` and `.run/*.run.xml`.
 - Runs through VS Code's JavaScript debugger, so **Debug** stops at breakpoints, including child processes.
 
 ## Where configurations are stored
