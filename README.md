@@ -11,6 +11,8 @@ IntelliJ / WebStorm-style **run configurations** for VS Code: **npm**, **Flutter
 - **Services** panel (bottom panel, like IntelliJ's Services + Run tool windows):
   - **Services**: every configuration grouped by type; running ones in green with inline ▷ / 🐞 / ■ and *Edit Configuration…*.
   - **Run**: one tab per run with its output (ANSI colours, stderr in red), ↻ Rerun, 🐞 Debug, ■ Stop, Hot Reload / Hot Restart for Flutter, scroll-to-end, soft-wrap, clear, and an input line for scripts that read stdin. A rerun reuses its tab. npm configurations printing to the integrated terminal (`runConfigurations.npmConsole`) keep their output there.
+- **▷ Run | Debug in the editor** (CodeLens, VS Code's take on IntelliJ's gutter icons) above `package.json` scripts, Dart `main()` in Flutter apps, Python `if __name__ == "__main__"` and shell scripts. They reuse an equivalent configuration or create a **temporary** one (the last 5 are kept, shown in italics) that you can **Save** from the selector, Services or the dialog.
+- **Before launch** like IntelliJ: an ordered list of steps — *Run Another Configuration* (waits until it ends), *Run npm script*, *Run VS Code Task* and *Launch Web Browser*. A failing or cancelled step cancels the launch; steps are imported from IntelliJ and an old `preLaunchTask` becomes a task step.
 - **Detected Node.js runtimes and package managers** (nvm, fnm, volta, asdf, mise, Homebrew, PATH) with their versions. *Project* uses `.nvmrc` / `.node-version` and the project's lockfile or `packageManager` field.
 - **IntelliJ shortcuts**: `⌃R` run, `⌃D` debug, `⌘F2` stop, `⌃⌥R` choose configuration (macOS); `Shift+F10`, `Shift+F9`, `Ctrl+F2`, `Alt+Shift+F10` on Windows/Linux.
 - **Import from IntelliJ** (npm and Flutter): reads `.idea/workspace.xml`, `.idea/runConfigurations/*.xml` and `.run/*.run.xml`.
@@ -48,6 +50,7 @@ On macOS, `⌃D` replaces VS Code's *delete right* in the editor and `⌃R` repl
 |---|---|---|
 | `runConfigurations.defaultNodeRuntime` | `""` | Node binary for *Project* when there is no `.nvmrc` (empty: `node` on PATH) |
 | `runConfigurations.showStatusBar` | `true` | Status bar selector and buttons |
+| `runConfigurations.codeLens` | `true` | ▷ Run / Debug above runnable code |
 | `runConfigurations.runWindow` | `true` | Output in the Run window instead of popping the Debug Console |
 | `runConfigurations.floatingDialog` | `true` | Open the dialog in its own window (off: editor tab) |
 | `runConfigurations.offerIntellijImport` | `true` | Offer the import when a workspace has no configurations |

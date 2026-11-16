@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -34,11 +34,11 @@
   "main": "./dist/extension.js",
   "l10n": "./l10n",
   "activationEvents": [
-    "onStartupFinished",
-    "onDebugResolve:npm-run",
+    "onDebugResolve:compound-run",
     "onDebugResolve:flutter-run",
+    "onDebugResolve:npm-run",
     "onDebugResolve:script-run",
-    "onDebugResolve:compound-run"
+    "onStartupFinished"
   ],
   "contributes": {
     "commands": [
@@ -135,6 +135,17 @@
         "title": "%command.showRunWindow%",
         "category": "%category%",
         "icon": "$(output)"
+      },
+      {
+        "command": "runConfigurations.runEntry",
+        "title": "%command.runEntry%",
+        "category": "%category%"
+      },
+      {
+        "command": "runConfigurations.saveTemporary",
+        "title": "%command.saveTemporary%",
+        "category": "%category%",
+        "icon": "$(save)"
       }
     ],
     "keybindings": [
@@ -209,6 +220,14 @@
         {
           "command": "runConfigurations.services.edit",
           "when": "false"
+        },
+        {
+          "command": "runConfigurations.runEntry",
+          "when": "false"
+        },
+        {
+          "command": "runConfigurations.saveTemporary",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -273,6 +292,16 @@
           "command": "runConfigurations.services.edit",
           "when": "view == runConfigurations.services && viewItem =~ /^config/",
           "group": "2_view@2"
+        },
+        {
+          "command": "runConfigurations.saveTemporary",
+          "when": "view == runConfigurations.services && viewItem =~ /\\.temp$/",
+          "group": "inline@4"
+        },
+        {
+          "command": "runConfigurations.saveTemporary",
+          "when": "view == runConfigurations.services && viewItem =~ /\\.temp$/",
+          "group": "2_view@3"
         }
       ]
     },
@@ -354,6 +383,78 @@
                 "type": "boolean",
                 "description": "%attr.allowMultiple%",
                 "default": false
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           }
@@ -442,6 +543,78 @@
                   "ios",
                   "emulator-5554"
                 ]
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           }
@@ -520,6 +693,78 @@
                 "type": "boolean",
                 "description": "%attr.allowMultiple%",
                 "default": false
+              },
+              "beforeLaunch": {
+                "type": "array",
+                "description": "%attr.beforeLaunch%",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "config"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "npm"
+                        },
+                        "packageJson": {
+                          "type": "string"
+                        },
+                        "script": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "script"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "task"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "name"
+                      ]
+                    },
+                    {
+                      "properties": {
+                        "type": {
+                          "const": "browser"
+                        },
+                        "url": {
+                          "type": "string",
+                          "format": "uri"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "url"
+                      ]
+                    }
+                  ]
+                }
               }
             }
           }
@@ -623,6 +868,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%settings.runWindow%"
+        },
+        "runConfigurations.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.codeLens%"
         }
       }
     },
@@ -649,7 +899,25 @@
           "icon": "media/services.svg"
         }
       ]
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "runConfigurations",
+        "required": [
+          "script"
+        ],
+        "properties": {
+          "script": {
+            "type": "string",
+            "description": "%task.script%"
+          },
+          "packageJson": {
+            "type": "string",
+            "description": "%task.packageJson%"
+          }
+        }
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.mjs",

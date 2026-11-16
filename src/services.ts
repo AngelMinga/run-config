@@ -72,12 +72,12 @@ export class ServicesProvider implements vscode.TreeDataProvider<Node> {
     item.iconPath = new vscode.ThemeIcon(this.source.icon(c.kind),
       running ? new vscode.ThemeColor('debugIcon.startForeground') : undefined);
     const multiRoot = this.source.folders().length > 1;
-    const parts = [running ? t('Running') : '', this.source.describe(c), multiRoot ? path.basename(c.folder) : '']
+    const parts = [running ? t('Running') : '', c.temporary ? t('temporary') : '', this.source.describe(c), multiRoot ? path.basename(c.folder) : '']
       .filter(Boolean);
     item.description = parts.join(' · ');
     item.tooltip = new vscode.MarkdownString(
       `**${c.name}**${this.source.isSelected(c) ? ` — ${t('selected')}` : ''}\n\n${this.source.describe(c)}`);
-    item.contextValue = `config.${running ? 'running' : 'stopped'}.${c.kind}`;
+    item.contextValue = `config.${running ? 'running' : 'stopped'}.${c.kind}${c.temporary ? '.temp' : ''}`;
     item.command = { command: 'runConfigurations.services.open', title: t('Show Output'), arguments: [node] };
     return item;
   }

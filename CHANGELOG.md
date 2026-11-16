@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- **▷ Run | Debug in the editor** (CodeLens) for `package.json` scripts, Dart `main()` (Flutter apps), Python `__main__` and shell scripts. Reuses an equivalent configuration or creates a **temporary** one (last 5 kept) that can be saved from the selector, Services or the dialog. Setting `runConfigurations.codeLens`.
+- **Before launch** steps like IntelliJ: run another configuration (waits for it), npm script, VS Code task, open a browser; ordered list with add/remove/move in the dialog, `beforeLaunch` in launch.json, imported from IntelliJ. A failing step cancels the launch. An old `preLaunchTask` is migrated to a task step.
+
 ## 0.5.0
 
 - **Services panel** like IntelliJ: a *Services* tree with every configuration by type (running ones highlighted, inline Run/Debug/Stop/Edit, Stop All) and a *Run* window with one tab per run: captured output with ANSI colours, Rerun, Debug, Stop, Hot Reload/Restart (Flutter), scroll-to-end, soft-wrap, clear and stdin for scripts.

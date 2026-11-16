@@ -47,6 +47,10 @@
     script: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="m4 6 2.5 2L4 10M8 10.5h4"/>',
     folder: '<path d="M2 4.5h4l1.5 1.5H14v6.5H2z"/>',
     compound: '<path d="M2.5 3v10l5-5zM8.5 3v10l5-5z" fill="currentColor" stroke="none"/>',
+    up: '<path d="m4 10 4-4 4 4"/>',
+    down: '<path d="m4 6 4 4 4-4"/>',
+    globe: '<circle cx="8" cy="8" r="5.5"/><path d="M2.5 8h11M8 2.5c-2 2.8-2 8.2 0 11M8 2.5c2 2.8 2 8.2 0 11"/>',
+    task: '<path d="M3 4.5h10M3 8h10M3 11.5h6"/>',
     refresh: '<path d="M13 8a5 5 0 1 1-1.5-3.5M13 2.5v2.5h-2.5"/>',
     link: '<path d="M9 3h4v4M13 3 7.5 8.5M11.5 9.5V13h-8.5V4.5H6.5"/>',
   };
@@ -57,7 +61,12 @@
   }
 
   const selected = () => S.configs.find(c => c.id === S.selectedId);
-  const withId = c => ({ ...c, env: { ...(c.env || {}) }, members: [...(c.members || [])], id: 'c' + S.nextId++ });
+  const withId = c => ({
+    ...c, env: { ...(c.env || {}) }, members: [...(c.members || [])],
+    beforeLaunch: (c.beforeLaunch || []).map(x => ({ ...x })), temporary: !!c.temporary, id: 'c' + S.nextId++,
+  });
+  // Selected before-launch step per configuration id (UI state only).
+  const stepSel = {};
 
   function folderFor(packageJson, fallback) {
     let best = '';
@@ -119,6 +128,22 @@
     return h('button', { class: 'tool', title, 'aria-label': title, onclick, disabled }, icon(name));
   }
 
+  /** Popup under `button` with a title and items `{ icon, cls, label, run }` (shares the add menu's slot). */
+  function popupMenu(button, title, items) {
+    if (addMenu) { closeAddMenu(); return; }
+    const r = button.getBoundingClientRect();
+    addMenu = h('div', { class: 'menu', role: 'menu' },
+      h('div', { class: 'menu-title' }, title),
+      items.map(it => h('button', {
+        class: 'menu-item', role: 'menuitem',
+        onclick: () => { closeAddMenu(); it.run(); },
+      }, icon(it.icon, it.cls), it.label)));
+    addMenu.style.top = `${r.bottom + 2}px`;
+    addMenu.style.left = `${Math.min(r.left, window.innerWidth - 240)}px`;
+    document.body.append(addMenu);
+    addMenu.querySelector('button').focus();
+  }
+
   let addMenu;
   function closeAddMenu() {
     if (addMenu) { addMenu.remove(); addMenu = undefined; }
@@ -164,7 +189,7 @@
       tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon(k.icon, k.cls), groupLabel(k)));
       for (const c of group) {
       tree.append(h('div', {
-        class: 'item' + (c.id === S.selectedId ? ' selected' : ''),
+        class: 'item' + (c.id === S.selectedId ? ' selected' : '') + (c.temporary ? ' temp' : ''),
         role: 'treeitem',
         tabindex: '0',
         title: anchor(c),
@@ -279,6 +304,106 @@
     if (scripts) { scripts.replaceWith(datalist('dl-scripts', ((S.inspected[c.id] || {}).scripts || []))); }
   }
 
+  const STEP_TYPES = [
+    { type: 'config', icon: 'launch', label: () => t('Run Another Configuration') },
+    { type: 'npm', icon: 'pkg', cls: 'npm', label: () => t('Run npm script') },
+    { type: 'task', icon: 'task', label: () => t('Run VS Code Task') },
+    { type: 'browser', icon: 'globe', label: () => t('Launch Web Browser') },
+  ];
+
+  /** IntelliJ's "Before launch" list: + (menu), −, ↑, ↓ and each step edited in place. */
+  function beforeSection(c) {
+    const wrap = h('div', { class: 'before' });
+    const steps = c.beforeLaunch;
+    const draw = () => {
+      wrap.textContent = '';
+      const sel = stepSel[c.id];
+      const valid = sel !== undefined && sel < steps.length;
+      const move = d => {
+        const j = sel + d;
+        if (!valid || j < 0 || j >= steps.length) { return; }
+        [steps[sel], steps[j]] = [steps[j], steps[sel]];
+        stepSel[c.id] = j;
+        markDirty();
+        draw();
+      };
+      const add = type => {
+        const step = type === 'config' ? { type, name: '' }
+          : type === 'npm' ? { type, packageJson: c.kind === 'npm' ? c.packageJson : (S.packageJsons[0] || ''), script: '' }
+            : type === 'task' ? { type, name: '' } : { type, url: 'http://localhost:3000' };
+        steps.push(step);
+        stepSel[c.id] = steps.length - 1;
+        markDirty();
+        draw();
+        const first = wrap.querySelector('.step.selected input, .step.selected select');
+        if (first) { first.focus(); }
+      };
+      wrap.append(h('div', { class: 'before-head' },
+        h('span', { class: 'before-title' }, t('Before launch')),
+        h('div', { class: 'before-tools' },
+          toolButton('add', t('Add'), e => popupMenu(e.currentTarget, t('Add'), STEP_TYPES.map(st => ({
+            icon: st.icon, cls: st.cls, label: st.label(), run: () => add(st.type),
+          })))),
+          toolButton('remove', t('Remove'), () => {
+            if (!valid) { return; }
+            steps.splice(sel, 1);
+            stepSel[c.id] = Math.min(sel, steps.length - 1);
+            markDirty();
+            draw();
+          }, !valid),
+          toolButton('up', t('Move Up'), () => move(-1), !valid || sel === 0),
+          toolButton('down', t('Move Down'), () => move(1), !valid || sel === steps.length - 1))));
+      const list = h('div', { class: 'steps', role: 'list' });
+      if (!steps.length) {
+        list.append(h('div', { class: 'empty' }, t('There are no tasks to run before launch')));
+      }
+      steps.forEach((step, i) => {
+        const st = STEP_TYPES.find(x => x.type === step.type) || STEP_TYPES[0];
+        const field = (key, props) => h('input', {
+          type: 'text', spellcheck: 'false', value: key === 'packageJson' ? tilde(step[key]) : step[key], ...props,
+          oninput: e => { step[key] = key === 'packageJson' ? untilde(e.target.value.trim()) : e.target.value; markDirty(); },
+        });
+        let editor;
+        if (step.type === 'config') {
+          const names = [
+            ...S.configs.filter(o => o !== c && o.folder === c.folder && o.kind !== 'compound').map(o => o.name),
+            ...S.others.filter(o => o.folder === c.folder).map(o => o.name),
+          ];
+          if (step.name && !names.includes(step.name)) { names.push(step.name); }
+          editor = h('select', {
+            'aria-label': st.label(),
+            onchange: e => { step.name = e.target.value; markDirty(); },
+          }, h('option', { value: '', disabled: true, selected: !step.name }, t('Choose a configuration…')),
+          names.map(n => h('option', { value: n, selected: n === step.name }, n)));
+        } else if (step.type === 'npm') {
+          editor = [field('packageJson', { list: 'dl-pkg-before', placeholder: 'package.json', 'aria-label': 'package.json' }),
+            field('script', { placeholder: t('script'), 'aria-label': t('script'), class: 'short' })];
+        } else if (step.type === 'task') {
+          editor = field('name', { list: 'dl-tasks', placeholder: t('Task name (e.g. npm: build)'), 'aria-label': st.label() });
+        } else {
+          editor = field('url', { placeholder: 'http://localhost:3000', 'aria-label': st.label() });
+        }
+        list.append(h('div', {
+          class: 'step' + (i === stepSel[c.id] ? ' selected' : ''), role: 'listitem',
+          onclick: e => {
+            if (stepSel[c.id] === i) { return; }
+            // Redraw for the toolbar state, then give the focus back to the field that was clicked.
+            const controls = [...e.currentTarget.querySelectorAll('input, select')];
+            const at = controls.indexOf(e.target);
+            stepSel[c.id] = i;
+            draw();
+            const again = wrap.querySelectorAll('.step')[i];
+            const target = again && at >= 0 ? again.querySelectorAll('input, select')[at] : undefined;
+            if (target) { target.focus(); }
+          },
+        }, h('span', { class: 'step-num' }, String(i + 1)), icon(st.icon, st.cls), h('span', { class: 'step-type' }, st.label()), editor));
+      });
+      wrap.append(list, datalist('dl-tasks', S.tasks), datalist('dl-pkg-before', S.packageJsons.map(tilde)));
+    };
+    draw();
+    return wrap;
+  }
+
   function renderForm() {
     formEl.textContent = '';
     const c = selected();
@@ -305,6 +430,13 @@
           type: 'checkbox', checked: c.shared, onchange: e => { c.shared = e.target.checked; markDirty(); renderSidebar(); renderForm(); },
         }), t('Store as project file')),
     );
+    if (c.temporary) {
+      top.append(h('span', { class: 'temp-note' }, t('Temporary configuration'),
+        h('button', {
+          class: 'secondary small', title: t('Keep it: temporary configurations are replaced after 5'),
+          onclick: () => { c.temporary = false; markDirty(); renderSidebar(); renderForm(); },
+        }, t('Save Configuration'))));
+    }
     const hint = h('div', { class: 'hint' }, c.shared ? t('Saved in .vscode/launch.json (shared with the team).') : t('Saved privately in this workspace (not committed).'));
 
     const browseBtn = field => h('button', {
@@ -320,8 +452,7 @@
       id: 'f-env', rows: '3', spellcheck: 'false', placeholder: t('One KEY=value per line'),
       oninput: e => { c.env = parseEnv(e.target.value); markDirty(); },
     }, formatEnv(c.env)), { for: 'f-env', cls: 'top-align' });
-    const beforeRow = () => row(t('Before launch:'), [textInput(c, 'preLaunchTask', { list: 'dl-tasks', placeholder: t('VS Code task to run before launch (preLaunchTask)') }),
-      datalist('dl-tasks', S.tasks)], { for: 'f-preLaunchTask' });
+    const beforeRow = () => beforeSection(c);
     const help = text => h('div', { class: 'help' }, text);
 
     if (c.kind === 'compound') {
@@ -500,6 +631,7 @@
       packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
       nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
       program: entry || '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '', members: [],
+      beforeLaunch: [], temporary: false,
     });
     S.configs.push(c);
     markDirty();

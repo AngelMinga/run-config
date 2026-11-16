@@ -341,3 +341,54 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-off
 .member.missing .label { text-decoration: line-through; color: var(--muted); }
 .members .empty { padding: 6px 8px; }
 .panel.compound .help { margin-left: 0; }
+
+/* ---------- Before launch ---------- */
+.before { margin-top: 12px; }
+.before-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.before-title { font-weight: 600; }
+.before-tools { display: flex; gap: 2px; margin-left: auto; }
+.steps {
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 3px 3px;
+  min-height: 56px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 2px 0;
+}
+.steps .empty { padding: 16px 8px; text-align: center; }
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: default;
+}
+.step:hover { background: var(--vscode-list-hoverBackground); }
+.step.selected { background: var(--vscode-list-inactiveSelectionBackground); }
+.step-num { color: var(--muted); width: 1.2em; text-align: right; flex: none; }
+.step-type { white-space: nowrap; flex: none; min-width: 170px; }
+.step input, .step select { flex: 1; min-width: 0; height: 24px; }
+.step input.short { flex: 0 1 140px; }
+
+/* ---------- Temporary configurations ---------- */
+.item.temp .label { font-style: italic; opacity: 0.75; }
+.temp-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-style: italic;
+}
+.secondary.small { height: 22px; padding: 0 8px; font-style: normal; }
+
+@media (max-width: 640px) {
+  .step { flex-wrap: wrap; }
+  .step-type { min-width: 0; }
+}

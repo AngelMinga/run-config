@@ -58,5 +58,11 @@
   "attr.configurations": "Names of the configurations (same folder) started together.",
   "snippet.compound.label": "Compound: Run Configurations Together (IntelliJ-style)",
   "snippet.compound.description": "Starts several run configurations at once.",
-  "settings.runWindow": "Show the output of run configurations in the **Run** window (Services panel), with one tab per run, like IntelliJ. npm configurations printing to the integrated terminal (`runConfigurations.npmConsole`) keep their output there."
+  "settings.runWindow": "Show the output of run configurations in the **Run** window (Services panel), with one tab per run, like IntelliJ. npm configurations printing to the integrated terminal (`runConfigurations.npmConsole`) keep their output there.",
+  "command.runEntry": "Run from the Editor",
+  "command.saveTemporary": "Save Configuration",
+  "task.script": "package.json script to run.",
+  "task.packageJson": "package.json whose directory the script runs in.",
+  "attr.beforeLaunch": "Steps run in order before launching (IntelliJ's *Before launch*): `config` (another configuration, waits until it ends), `npm` (a package.json script), `task` (a VS Code task) and `browser` (opens a URL). A failing step cancels the launch.",
+  "settings.codeLens": "Show **▷ Run | Debug** above `package.json` scripts, Dart `main()`, Python `if __name__ == \"__main__\"` and shell scripts, like IntelliJ's gutter icons. Running one creates a temporary configuration (the last 5 are kept) unless an equivalent configuration exists."
 }

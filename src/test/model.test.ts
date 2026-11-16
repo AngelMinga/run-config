@@ -41,7 +41,10 @@ test('launch entry round-trip keeps every field', () => {
     nodeOptions: '--max-old-space-size=4096',
     packageManager: 'pnpm',
     env: { API: 'http://x' },
-    preLaunchTask: 'npm: build',
+    beforeLaunch: [
+      { type: 'task' as const, name: 'npm: build' },
+      { type: 'npm' as const, packageJson: `${folder}/shared/package.json`, script: 'build' },
+    ],
   };
   const entry = toLaunchEntry(c, home);
   assert.equal(entry.type, 'npm-run');

@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { parseIntellijMethod, withoutMethod } from './beforeLaunch';
 import { emptyConfig, RunConfig } from './model';
 
 /** Fields of an IntelliJ npm (`js.build_tools.npm`) or Flutter (`FlutterRunConfigurationType`) configuration. */
@@ -61,7 +62,10 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
     if ((a.type !== 'js.build_tools.npm' && !flutter) || a.default === 'true' || !a.name) {
       continue;
     }
-    const body = m[3] ?? '';
+    const raw = m[3] ?? '';
+    const beforeLaunch = parseIntellijMethod(raw, macros);
+    // `<script>`/`<package-json>` inside the before-launch block belong to the steps, not to the configuration.
+    const body = withoutMethod(raw);
     const scripts = [...body.matchAll(/<script\b([^>]*?)\/?>/g)].map(s => attrs(s[1]).value).filter(Boolean);
     const env: Record<string, string> = {};
     for (const e of body.matchAll(/<env\b([^>]*?)\/?>/g)) {
@@ -80,6 +84,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
         flavor: optionValue(body, 'buildFlavor'),
         attachArgs: optionValue(body, 'attachArgs'),
         env,
+        beforeLaunch,
       });
       continue;
     }
@@ -100,6 +105,7 @@ export function parseIntellijXml(xml: string, projectDir: string, home: string, 
       packageManager: !pm || pm === 'project' ? '' : macros(pm),
       env,
       preLaunchTask: '',
+      beforeLaunch,
     });
   }
   return out;

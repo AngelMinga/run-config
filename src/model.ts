@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { BeforeLaunchStep, parseSteps, serializeSteps } from './beforeLaunch';
 
 /** Debug type contributed in package.json; resolved into a js-debug `node` launch. */
 export const DEBUG_TYPE = 'npm-run';
@@ -55,6 +56,10 @@ export interface RunConfig {
   workingDir: string;
   /** Compound: names of the configurations (same workspace folder) started together, in order. */
   members: string[];
+  /** IntelliJ's "Before launch" steps, run in order (an old `preLaunchTask` becomes a `task` step). */
+  beforeLaunch: BeforeLaunchStep[];
+  /** Created from a ▷ in the editor and not saved yet (IntelliJ keeps the last 5); always private. */
+  temporary: boolean;
 }
 
 export interface LaunchEntry {
@@ -87,17 +92,32 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     interpreter: '',
     workingDir: '',
     members: [],
+    beforeLaunch: [],
+    temporary: false,
   };
+}
+
+/** An old single `preLaunchTask` becomes the first "Run VS Code task" step. */
+function migratePreLaunchTask(c: RunConfig): RunConfig {
+  if (c.preLaunchTask) {
+    if (!c.beforeLaunch.some(s => s.type === 'task' && s.name === c.preLaunchTask)) {
+      c.beforeLaunch = [{ type: 'task', name: c.preLaunchTask }, ...c.beforeLaunch];
+    }
+    c.preLaunchTask = '';
+  }
+  return c;
 }
 
 /** Fills fields missing in configurations saved by older versions. */
 export function normalize(c: Partial<RunConfig> & { folder: string; name: string }): RunConfig {
   const base = emptyConfig(c.folder, c.name, c.kind ?? 'npm');
-  const out = { ...base, ...c, env: { ...(c.env ?? {}) }, members: [...(c.members ?? [])] } as RunConfig;
+  const out = {
+    ...base, ...c, env: { ...(c.env ?? {}) }, members: [...(c.members ?? [])], beforeLaunch: (c.beforeLaunch ?? []).map(x => ({ ...x })),
+  } as RunConfig;
   for (const k of Object.keys(base) as (keyof RunConfig)[]) {
     if (out[k] === undefined || out[k] === null) { (out as unknown as Record<string, unknown>)[k] = base[k]; }
   }
-  return out;
+  return migratePreLaunchTask(out);
 }
 
 /** The file that places a configuration in a project (package.json, the Dart entrypoint or the script). */
@@ -156,6 +176,7 @@ export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
     if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
     if (c.allowMultiple) { entry.allowMultipleInstances = true; }
     if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
+    if (c.beforeLaunch.length) { entry.beforeLaunch = serializeSteps(c.beforeLaunch, p => portablePath(p, c.folder, home)); }
     return entry;
   }
   if (c.kind === 'flutter') {
@@ -171,6 +192,7 @@ export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
     if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
     if (c.allowMultiple) { entry.allowMultipleInstances = true; }
     if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
+    if (c.beforeLaunch.length) { entry.beforeLaunch = serializeSteps(c.beforeLaunch, p => portablePath(p, c.folder, home)); }
     return entry;
   }
   const entry: LaunchEntry = {
@@ -188,12 +210,19 @@ export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
   if (Object.keys(c.env).length) { entry.env = { ...c.env }; }
   if (c.allowMultiple) { entry.allowMultipleInstances = true; }
   if (c.preLaunchTask) { entry.preLaunchTask = c.preLaunchTask; }
+  if (c.beforeLaunch.length) { entry.beforeLaunch = serializeSteps(c.beforeLaunch, p => portablePath(p, c.folder, home)); }
   return entry;
 }
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 
 export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home: string, shared: boolean): RunConfig {
+  const c = fromLaunchFields(e, folder, home, shared);
+  c.beforeLaunch = parseSteps(e.beforeLaunch, p => (p ? expandVars(p, folder, home) : p));
+  return migratePreLaunchTask(c);
+}
+
+function fromLaunchFields(e: Record<string, unknown>, folder: string, home: string, shared: boolean): RunConfig {
   const env: Record<string, string> = {};
   if (e.env && typeof e.env === 'object') {
     for (const [k, v] of Object.entries(e.env as Record<string, unknown>)) {

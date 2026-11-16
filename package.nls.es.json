@@ -58,5 +58,11 @@
   "attr.configurations": "Nombres de las configuraciones (misma carpeta) que se inician juntas.",
   "snippet.compound.label": "Compound: varias configuraciones a la vez (estilo IntelliJ)",
   "snippet.compound.description": "Inicia varias configuraciones de ejecución a la vez.",
-  "settings.runWindow": "Mostrar la salida de las configuraciones en la ventana **Run** (panel Services), con una pestaña por ejecución, como IntelliJ. Las configuraciones npm que escriben en la terminal integrada (`runConfigurations.npmConsole`) mantienen ahí su salida."
+  "settings.runWindow": "Mostrar la salida de las configuraciones en la ventana **Run** (panel Services), con una pestaña por ejecución, como IntelliJ. Las configuraciones npm que escriben en la terminal integrada (`runConfigurations.npmConsole`) mantienen ahí su salida.",
+  "command.runEntry": "Ejecutar desde el editor",
+  "command.saveTemporary": "Guardar configuración",
+  "task.script": "Script de package.json que se ejecuta.",
+  "task.packageJson": "package.json en cuyo directorio se ejecuta el script.",
+  "attr.beforeLaunch": "Pasos que se ejecutan en orden antes de lanzar (el *Before launch* de IntelliJ): `config` (otra configuración, espera a que termine), `npm` (un script de package.json), `task` (una tarea de VS Code) y `browser` (abre una URL). Si un paso falla, no se lanza.",
+  "settings.codeLens": "Mostrar **▷ Ejecutar | Depurar** sobre los scripts de `package.json`, el `main()` de Dart, el `if __name__ == \"__main__\"` de Python y los scripts de shell, como los iconos del margen de IntelliJ. Al ejecutar uno se crea una configuración temporal (se guardan las 5 últimas) salvo que ya exista una equivalente."
 }

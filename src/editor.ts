@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { Runtimes } from './extension';
+import { describeStep, invalidStep } from './beforeLaunch';
 import { configKey, NPM_COMMANDS, packageManagerName, RunConfig } from './model';
 import { packageScripts, projectNode, projectPackageManager, resolvePackageManager } from './project';
 import { ConfigStore, StoredConfig } from './store';
@@ -28,6 +29,9 @@ type Incoming =
 /** Strings used by media/editor.js, translated here. */
 function strings(): Record<string, string> {
   const keys = [
+    'Before launch', 'Add', 'Remove', 'Move Up', 'Move Down', 'There are no tasks to run before launch',
+    'Run Another Configuration', 'Run npm script', 'Run VS Code Task', 'Launch Web Browser', 'Choose a configuration…', 'script',
+    'Task name (e.g. npm: build)', 'Temporary configuration', 'Save Configuration', 'Keep it: temporary configurations are replaced after 5',
     'Compound', 'Run/Debug configurations to start together:', 'All checked configurations start at the same time, like IntelliJ\'s Compound.',
     'No other configurations in this folder yet.', 'Stop and Run/Debug stop and start all of them.',
     'Run/Debug Configurations', 'Add New Configuration', 'Remove Configuration', 'Copy Configuration',
@@ -201,6 +205,8 @@ export class EditorPanel {
       const key = configKey(c);
       if (seen.has(key)) { return t('A configuration named "{0}" already exists in this folder.', c.name); }
       seen.add(key);
+      const bad = invalidStep(c.beforeLaunch ?? [], c.name);
+      if (bad) { return t('"{0}": before-launch step "{1}" is incomplete or runs the configuration itself.', c.name, describeStep(bad) || bad.type); }
       if (c.kind === 'flutter') {
         if (!c.program.trim()) { return t('Dart entrypoint is required.'); }
         continue;
