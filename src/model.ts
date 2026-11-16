@@ -60,6 +60,10 @@ export interface RunConfig {
   beforeLaunch: BeforeLaunchStep[];
   /** Created from a ▷ in the editor and not saved yet (IntelliJ keeps the last 5); always private. */
   temporary: boolean;
+  /** `.env` file loaded before launch; `env` overrides its variables. '' → none. */
+  envFile: string;
+  /** Folder of the configuration in the dialog/Services list (IntelliJ's run configuration folders). '' → none. */
+  group: string;
 }
 
 export interface LaunchEntry {
@@ -94,6 +98,8 @@ export function emptyConfig(folder: string, name: string, kind: ConfigKind = 'np
     members: [],
     beforeLaunch: [],
     temporary: false,
+    envFile: '',
+    group: '',
   };
 }
 
@@ -160,6 +166,13 @@ export function portablePath(value: string, folder: string, home: string): strin
 }
 
 export function toLaunchEntry(c: RunConfig, home: string): LaunchEntry {
+  const entry = toLaunchFields(c, home);
+  if (c.envFile && c.kind !== 'compound') { entry.envFile = portablePath(c.envFile, c.folder, home); }
+  if (c.group) { entry.group = c.group; }
+  return entry;
+}
+
+function toLaunchFields(c: RunConfig, home: string): LaunchEntry {
   if (c.kind === 'compound') {
     return { type: COMPOUND_TYPE, request: 'launch', name: c.name, configurations: [...c.members] };
   }
@@ -219,6 +232,8 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 export function fromLaunchEntry(e: Record<string, unknown>, folder: string, home: string, shared: boolean): RunConfig {
   const c = fromLaunchFields(e, folder, home, shared);
   c.beforeLaunch = parseSteps(e.beforeLaunch, p => (p ? expandVars(p, folder, home) : p));
+  c.envFile = typeof e.envFile === 'string' && e.envFile ? expandVars(e.envFile, folder, home) : '';
+  c.group = typeof e.group === 'string' ? e.group : '';
   return migratePreLaunchTask(c);
 }
 
@@ -540,4 +555,24 @@ export function expandCompound(
   };
   walk(root.members);
   return { names, missing };
+}
+
+/** Fields a template sets on new configurations of its kind (IntelliJ's "Edit configuration templates…"). */
+export const TEMPLATE_FIELDS: Record<ConfigKind, (keyof RunConfig)[]> = {
+  npm: ['allowMultiple', 'command', 'arguments', 'nodeRuntime', 'nodeOptions', 'packageManager', 'env', 'envFile', 'beforeLaunch'],
+  flutter: ['allowMultiple', 'runArgs', 'attachArgs', 'flavor', 'env', 'envFile', 'beforeLaunch'],
+  script: ['allowMultiple', 'arguments', 'interpreter', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
+  compound: [],
+};
+
+/** A new configuration with its kind's template applied (deep copies; identity fields untouched). */
+export function applyTemplate(c: RunConfig, template: Partial<RunConfig> | undefined): RunConfig {
+  if (!template) { return c; }
+  const out = { ...c } as Record<string, unknown>;
+  for (const f of TEMPLATE_FIELDS[c.kind]) {
+    const v = template[f];
+    if (v === undefined) { continue; }
+    out[f] = Array.isArray(v) ? v.map(x => (typeof x === 'object' ? { ...x } : x)) : typeof v === 'object' && v ? { ...v } : v;
+  }
+  return out as unknown as RunConfig;
 }

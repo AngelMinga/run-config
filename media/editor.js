@@ -5,7 +5,7 @@
 
   const S = {
     configs: [], others: [], folders: [], packageJsons: [], dartEntrypoints: [], hasDart: true, commands: [], tasks: [],
-    home: '', sep: '/', strings: {}, detection: null, inspected: {},
+    home: '', sep: '/', strings: {}, detection: null, inspected: {}, mode: 'configs', templateObjs: {},
     selectedId: null, dirty: false, error: '', nextId: 1,
   };
 
@@ -60,7 +60,7 @@
     return span;
   }
 
-  const selected = () => S.configs.find(c => c.id === S.selectedId);
+  const selected = () => (S.mode === 'templates' ? Object.values(S.templateObjs) : S.configs).find(c => c.id === S.selectedId);
   const withId = c => ({
     ...c, env: { ...(c.env || {}) }, members: [...(c.members || [])],
     beforeLaunch: (c.beforeLaunch || []).map(x => ({ ...x })), temporary: !!c.temporary, id: 'c' + S.nextId++,
@@ -170,49 +170,203 @@
     if (e.key === 'Escape') { closeAddMenu(); }
   });
 
+  // ---------- list: configurations (folders, drag & drop) or templates ----------
+  let editingFolder = null; // { kind, name } whose header shows a rename input
+  let dragId = null;
+
+  function moveConfig(id, beforeId, group) {
+    const from = S.configs.findIndex(c => c.id === id);
+    if (from < 0) { return; }
+    const [c] = S.configs.splice(from, 1);
+    c.group = group;
+    let to = beforeId ? S.configs.findIndex(x => x.id === beforeId) : -1;
+    if (to < 0) {
+      // End of the folder (or of the kind when no folder).
+      const same = S.configs.map((x, i) => [x, i]).filter(([x]) => x.kind === c.kind && (x.group || '') === group);
+      to = same.length ? same[same.length - 1][1] + 1 : S.configs.length;
+    }
+    S.configs.splice(to, 0, c);
+    markDirty();
+    renderSidebar();
+  }
+
+  function renameFolder(kind, from, to) {
+    to = to.trim();
+    editingFolder = null;
+    if (to && to !== from) {
+      for (const c of S.configs) { if (c.kind === kind && c.group === from) { c.group = to; } }
+      markDirty();
+    }
+    renderSidebar();
+  }
+
+  function newFolder() {
+    const c = selected();
+    if (!c || S.mode === 'templates') { return; }
+    const taken = new Set(S.configs.filter(x => x.kind === c.kind).map(x => x.group));
+    let name = t('New Folder');
+    for (let i = 2; taken.has(name); i++) { name = `${t('New Folder')} ${i}`; }
+    c.group = name;
+    editingFolder = { kind: c.kind, name };
+    markDirty();
+    renderSidebar();
+  }
+
+  function dropTarget(el, group, beforeId) {
+    el.addEventListener('dragover', e => {
+      const c = S.configs.find(x => x.id === dragId);
+      if (!c || el.dataset.kind !== c.kind) { return; }
+      e.preventDefault();
+      el.classList.add('drop');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('drop'));
+    el.addEventListener('drop', e => {
+      el.classList.remove('drop');
+      e.preventDefault();
+      if (dragId && dragId !== beforeId) { moveConfig(dragId, beforeId, group); }
+    });
+    return el;
+  }
+
+  function configItem(k, c, multi, nested) {
+    const el = h('div', {
+      class: 'item' + (c.id === S.selectedId ? ' selected' : '') + (c.temporary ? ' temp' : '') + (nested ? ' nested' : ''),
+      role: 'treeitem', tabindex: '0', title: anchor(c), draggable: 'true', 'data-kind': c.kind,
+      onclick: () => selectConfig(c.id),
+      onkeydown: e => {
+        if (e.key === 'Enter' || e.key === ' ') { selectConfig(c.id); return; }
+        // Alt+↑/↓ reorders within its folder (keyboard alternative to drag & drop).
+        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault();
+          const peers = S.configs.filter(x => x.kind === c.kind && (x.group || '') === (c.group || ''));
+          const i = peers.indexOf(c) + (e.key === 'ArrowUp' ? -1 : 1);
+          if (i < 0 || i >= peers.length) { return; }
+          const target = e.key === 'ArrowUp' ? peers[i] : peers[i + 1];
+          moveConfig(c.id, target ? target.id : null, c.group || '');
+          const again = sidebarEl.querySelector('.item.selected');
+          if (again) { again.focus(); }
+        }
+      },
+      ondragstart: e => { dragId = c.id; e.dataTransfer.effectAllowed = 'move'; el.classList.add('dragging'); },
+      ondragend: () => { dragId = null; el.classList.remove('dragging'); },
+    }, icon(k.icon, k.cls), h('span', { class: 'label' }, c.name || t('Unnamed')),
+    multi ? h('span', { class: 'desc' }, baseName(c.folder)) : null,
+    c.shared ? h('span', { class: 'badge', title: t('Store as project file') }, 'launch.json') : null);
+    return dropTarget(el, c.group || '', c.id);
+  }
+
+  function folderHeader(k, name) {
+    const editing = editingFolder && editingFolder.kind === k.kind && editingFolder.name === name;
+    const label = editing
+      ? h('input', {
+        class: 'folder-input', type: 'text', value: name, 'aria-label': t('Folder name'),
+        onkeydown: e => {
+          if (e.key === 'Enter') { renameFolder(k.kind, name, e.target.value); }
+          if (e.key === 'Escape') { editingFolder = null; renderSidebar(); }
+        },
+        onblur: e => { if (editingFolder) { renameFolder(k.kind, name, e.target.value); } },
+      })
+      : h('span', { class: 'label' }, name);
+    const el = h('div', {
+      class: 'folder', 'data-kind': k.kind, title: t('Double-click to rename. Drop configurations here.'),
+      ondblclick: () => { editingFolder = { kind: k.kind, name }; renderSidebar(); },
+    }, icon('folder'), label);
+    return dropTarget(el, name, null);
+  }
+
   function renderSidebar() {
     sidebarEl.textContent = '';
     const sel = selected();
+    const tpl = S.mode === 'templates';
     sidebarEl.append(h('div', { class: 'toolbar' },
-      toolButton('add', t('Add New Configuration'), e => toggleAddMenu(e.currentTarget)),
-      toolButton('remove', t('Remove Configuration'), removeConfig, !sel),
-      toolButton('copy', t('Copy Configuration'), copyConfig, !sel),
+      toolButton('add', t('Add New Configuration'), e => toggleAddMenu(e.currentTarget), tpl),
+      toolButton('remove', t('Remove Configuration'), removeConfig, tpl || !sel),
+      toolButton('copy', t('Copy Configuration'), copyConfig, tpl || !sel),
+      toolButton('folder', t('Move into New Folder'), newFolder, tpl || !sel),
     ));
     const tree = h('div', { class: 'tree', role: 'tree' });
-    const multi = S.folders.length > 1;
-    if (!S.configs.length) {
-      tree.append(h('div', { class: 'empty' }, t('No run configurations. Click + to add one.')));
-    }
-    for (const k of KINDS) {
-      const group = S.configs.filter(c => kindOf(c) === k);
-      if (!group.length) { continue; }
-      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon(k.icon, k.cls), groupLabel(k)));
-      for (const c of group) {
-      tree.append(h('div', {
-        class: 'item' + (c.id === S.selectedId ? ' selected' : '') + (c.temporary ? ' temp' : ''),
-        role: 'treeitem',
-        tabindex: '0',
-        title: anchor(c),
-        onclick: () => selectConfig(c.id),
-        onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { selectConfig(c.id); } },
-      }, icon(k.icon, k.cls), h('span', { class: 'label' }, c.name || t('Unnamed')),
-      multi ? h('span', { class: 'desc' }, baseName(c.folder)) : null,
-      c.shared ? h('span', { class: 'badge', title: t('Store as project file') }, 'launch.json') : null));
-      }
-    }
-    if (S.others.length) {
-      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon('launch'), t('Other launch.json configurations')));
-      for (const o of S.others) {
+    if (tpl) {
+      tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), t('Templates')));
+      for (const k of KINDS.filter(x => x.kind !== 'compound')) {
+        const c = S.templateObjs[k.kind];
         tree.append(h('div', {
-          class: 'item other',
-          role: 'treeitem',
-          tabindex: '0',
-          title: t('Edit in launch.json'),
-          onclick: () => vscode.postMessage({ type: 'openLaunch', folder: o.folder, name: o.name }),
-        }, icon('launch'), h('span', { class: 'label' }, o.name), h('span', { class: 'desc' }, o.type), icon('link', 'trail')));
+          class: 'item' + (c.id === S.selectedId ? ' selected' : ''), role: 'treeitem', tabindex: '0',
+          onclick: () => selectConfig(c.id),
+          onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { selectConfig(c.id); } },
+        }, icon(k.icon, k.cls), h('span', { class: 'label' }, kindLabel(k))));
+      }
+    } else {
+      const multi = S.folders.length > 1;
+      if (!S.configs.length) {
+        tree.append(h('div', { class: 'empty' }, t('No run configurations. Click + to add one.')));
+      }
+      for (const k of KINDS) {
+        const group = S.configs.filter(c => kindOf(c) === k);
+        if (!group.length) { continue; }
+        tree.append(dropTarget(h('div', { class: 'group', 'data-kind': k.kind }, icon('chevron', 'small'), icon(k.icon, k.cls), groupLabel(k)), '', null));
+        const folders = [...new Set(group.map(c => c.group).filter(Boolean))];
+        for (const f of folders) {
+          tree.append(folderHeader(k, f));
+          for (const c of group.filter(x => x.group === f)) { tree.append(configItem(k, c, multi, true)); }
+        }
+        for (const c of group.filter(x => !x.group)) { tree.append(configItem(k, c, multi, false)); }
+      }
+      if (S.others.length) {
+        tree.append(h('div', { class: 'group' }, icon('chevron', 'small'), icon('launch'), t('Other launch.json configurations')));
+        for (const o of S.others) {
+          tree.append(h('div', {
+            class: 'item other',
+            role: 'treeitem',
+            tabindex: '0',
+            title: t('Edit in launch.json'),
+            onclick: () => vscode.postMessage({ type: 'openLaunch', folder: o.folder, name: o.name }),
+          }, icon('launch'), h('span', { class: 'label' }, o.name), h('span', { class: 'desc' }, o.type), icon('link', 'trail')));
+        }
       }
     }
-    sidebarEl.append(tree);
+    sidebarEl.append(tree, h('button', {
+      class: 'link templates-link',
+      onclick: () => toggleTemplates(),
+    }, tpl ? t('Back to configurations') : t('Edit configuration templates…')));
+    const input = sidebarEl.querySelector('.folder-input');
+    if (input) { input.focus(); input.select(); }
+  }
+
+  // Template fields per kind: keep in sync with TEMPLATE_FIELDS in src/model.ts.
+  const TEMPLATE_FIELDS = {
+    npm: ['allowMultiple', 'command', 'arguments', 'nodeRuntime', 'nodeOptions', 'packageManager', 'env', 'envFile', 'beforeLaunch'],
+    flutter: ['allowMultiple', 'runArgs', 'attachArgs', 'flavor', 'env', 'envFile', 'beforeLaunch'],
+    script: ['allowMultiple', 'arguments', 'interpreter', 'workingDir', 'env', 'envFile', 'beforeLaunch'],
+    compound: [],
+  };
+  function blankConfig(kind, folder) {
+    return {
+      kind, name: '', folder, shared: false, allowMultiple: false,
+      packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
+      nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
+      program: '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '', members: [],
+      beforeLaunch: [], temporary: false, envFile: '', group: '',
+    };
+  }
+  function applyTemplate(c) {
+    const tplObj = S.templateObjs[c.kind];
+    if (!tplObj) { return c; }
+    for (const f of TEMPLATE_FIELDS[c.kind] || []) {
+      const v = tplObj[f];
+      c[f] = Array.isArray(v) ? v.map(x => (typeof x === 'object' ? { ...x } : x)) : v && typeof v === 'object' ? { ...v } : v;
+    }
+    return c;
+  }
+  function loadTemplates(templates) {
+    S.templateObjs = {};
+    for (const k of ['npm', 'flutter', 'script']) {
+      S.templateObjs[k] = withId({ ...blankConfig(k, ''), ...((templates || {})[k] || {}), kind: k, name: '' });
+    }
+  }
+  function toggleTemplates() {
+    S.mode = S.mode === 'templates' ? 'configs' : 'templates';
+    const first = S.mode === 'templates' ? S.templateObjs.npm : S.configs[0];
+    selectConfig(first ? first.id : null);
   }
 
   function row(label, control, opts) {
@@ -411,7 +565,14 @@
       formEl.append(h('div', { class: 'placeholder' }, t('No run configurations. Click + to add one.')));
       return;
     }
-    const top = h('div', { class: 'top' },
+    // Template mode: only the fields a template sets (no name, folder, file or script).
+    const tpl = S.mode === 'templates';
+    const top = tpl ? h('div', { class: 'top' },
+      h('div', { class: 'tpl-title' }, icon(kindOf(c).icon, kindOf(c).cls), t('Template: {0}', kindLabel(kindOf(c)))),
+      h('label', { class: 'check' }, h('input', {
+        type: 'checkbox', checked: c.allowMultiple, onchange: e => { c.allowMultiple = e.target.checked; markDirty(); },
+      }), t('Allow multiple instances')),
+    ) : h('div', { class: 'top' },
       h('div', { class: 'row name' }, h('label', { for: 'f-name' }, t('Name:')),
         h('div', { class: 'control' }, textInput(c, 'name', {
           onChange: prev => {
@@ -437,14 +598,16 @@
           onclick: () => { c.temporary = false; markDirty(); renderSidebar(); renderForm(); },
         }, t('Save Configuration'))));
     }
-    const hint = h('div', { class: 'hint' }, c.shared ? t('Saved in .vscode/launch.json (shared with the team).') : t('Saved privately in this workspace (not committed).'));
+    const hint = tpl
+      ? h('div', { class: 'hint tpl' }, t('New {0} configurations (from + or a ▷ in the editor) start with these values.', kindLabel(kindOf(c))))
+      : h('div', { class: 'hint' }, c.shared ? t('Saved in .vscode/launch.json (shared with the team).') : t('Saved privately in this workspace (not committed).'));
 
     const browseBtn = field => h('button', {
       class: 'browse', title: t('Browse…'), 'aria-label': t('Browse…'),
       onclick: () => vscode.postMessage({ type: 'browse', field, current: c[field], folder: c.folder, kind: c.kind }),
     }, '…');
 
-    const folderRow = () => (S.folders.length > 1 ? row(t('Workspace folder:'), h('select', {
+    const folderRow = () => (!tpl && S.folders.length > 1 ? row(t('Workspace folder:'), h('select', {
       id: 'f-folder',
       onchange: e => { c.folder = e.target.value; markDirty(); renderSidebar(); },
     }, S.folders.map(f => h('option', { value: f.path, selected: f.path === c.folder }, f.name))), { for: 'f-folder' }) : null);
@@ -453,6 +616,10 @@
       oninput: e => { c.env = parseEnv(e.target.value); markDirty(); },
     }, formatEnv(c.env)), { for: 'f-env', cls: 'top-align' });
     const beforeRow = () => beforeSection(c);
+    const envFileRow = () => [
+      row(t('Env file:'), [textInput(c, 'envFile', { path: true, placeholder: '.env' }), browseBtn('envFile')], { for: 'f-envFile' }),
+      help(t('Variables loaded before launch (dotenv format); the ones above override them.')),
+    ];
     const help = text => h('div', { class: 'help' }, text);
 
     if (c.kind === 'compound') {
@@ -496,7 +663,7 @@
       formEl.append(top, hint, h('div', { class: 'panel' },
         h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
         folderRow(),
-        row(t('Script path:'), [textInput(c, 'program', {
+        tpl ? null : row(t('Script path:'), [textInput(c, 'program', {
           path: true, onChange: () => {
             const folder = folderFor(c.program, c.folder);
             if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
@@ -509,6 +676,7 @@
         row(t('Working directory:'), [textInput(c, 'workingDir', { path: true }), browseBtn('workingDir')], { for: 'f-workingDir' }),
         help(t("Empty: the script's directory.")),
         envRow(t('Environment variables:')),
+        envFileRow(),
         beforeRow(),
         help(t("Runs in the Run window (Debug Console). Type there to answer the script's prompts.")),
       ));
@@ -520,13 +688,13 @@
         h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
         S.hasDart ? null : h('div', { class: 'warning' }, t('The Dart and Flutter extensions are needed to run Flutter configurations.')),
         folderRow(),
-        row(t('Dart entrypoint:'), [textInput(c, 'program', {
+        tpl ? null : row(t('Dart entrypoint:'), [textInput(c, 'program', {
           path: true, list: 'dl-dart', onChange: () => {
             const folder = folderFor(c.program, c.folder);
             if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
           },
         }), browseBtn('program'), datalist('dl-dart', S.dartEntrypoints.map(tilde))], { for: 'f-program' }),
-        help(t('The entry-point for the application (e.g. lib/main.dart).')),
+        tpl ? null : help(t('The entry-point for the application (e.g. lib/main.dart).')),
         row(t('Additional run args:'), textInput(c, 'runArgs'), { for: 'f-runArgs' }),
         help(t("Additional arguments to 'flutter run'.")),
         row(t('Additional attach args:'), textInput(c, 'attachArgs'), { for: 'f-attachArgs' }),
@@ -535,6 +703,7 @@
         help(t('An optional build flavor; either a Gradle product flavor or an Xcode custom scheme.')),
         envRow(t('Environment variables:')),
         help(t('Additional environment variables.')),
+        envFileRow(),
         beforeRow(),
       ));
       return;
@@ -543,7 +712,7 @@
     const panel = h('div', { class: 'panel' },
       h('div', { class: 'tabs' }, h('span', { class: 'tab active' }, t('Configuration'))),
       folderRow(),
-      row(t('package.json:'), [textInput(c, 'packageJson', {
+      tpl ? null : row(t('package.json:'), [textInput(c, 'packageJson', {
         path: true, list: 'dl-pkg', onChange: () => {
           const folder = folderFor(c.packageJson, c.folder);
           if (folder !== c.folder) { c.folder = folder; renderSidebarSoon(); }
@@ -551,7 +720,7 @@
         },
       }), browseBtn('packageJson'), datalist('dl-pkg', S.packageJsons.map(tilde))], { for: 'f-packageJson' }),
       row(t('Command:'), [textInput(c, 'command', { list: 'dl-cmd' }), datalist('dl-cmd', S.commands)], { for: 'f-command' }),
-      row(t('Scripts:'), [textInput(c, 'scripts', { list: 'dl-scripts', placeholder: t('Scripts from package.json') }),
+      tpl ? null : row(t('Scripts:'), [textInput(c, 'scripts', { list: 'dl-scripts', placeholder: t('Scripts from package.json') }),
         datalist('dl-scripts', ((S.inspected[c.id] || {}).scripts || []))], { for: 'f-scripts' }),
       row(t('Arguments:'), textInput(c, 'arguments'), { for: 'f-arguments' }),
       h('hr'),
@@ -561,6 +730,7 @@
       row(t('Node options:'), textInput(c, 'nodeOptions'), { for: 'f-nodeOptions' }),
       row(t('Package manager:'), runtimeSelect(c, 'packageManager', pmOptions), { for: 'f-packageManager' }),
       envRow(t('Environment:')),
+      envFileRow(),
       beforeRow(),
     );
     formEl.append(top, hint, panel);
@@ -576,8 +746,8 @@
     footerEl.textContent = '';
     const c = selected();
     footerEl.append(
-      h('button', { class: 'secondary', disabled: !c, onclick: () => save({ run: false }) }, icon('play', 'run'), t('Run')),
-      h('button', { class: 'secondary', disabled: !c, onclick: () => save({ run: true }) }, icon('debug', 'debug'), t('Debug')),
+      h('button', { class: 'secondary', disabled: !c || S.mode === 'templates', onclick: () => save({ run: false }) }, icon('play', 'run'), t('Run')),
+      h('button', { class: 'secondary', disabled: !c || S.mode === 'templates', onclick: () => save({ run: true }) }, icon('debug', 'debug'), t('Debug')),
       h('span', { class: 'error', role: 'alert' }, S.error),
       h('span', { class: 'spacer' }),
       h('button', { class: 'secondary', onclick: () => vscode.postMessage({ type: 'cancel' }) }, t('Cancel')),
@@ -625,14 +795,13 @@
     const script = kind === 'script';
     const compound = kind === 'compound';
     const entry = flutter && (S.dartEntrypoints.find(p => p.startsWith(folder + S.sep)) || (folder ? joinPath(joinPath(folder, 'lib'), 'main.dart') : ''));
-    const c = withId({
-      kind: flutter ? 'flutter' : script ? 'script' : compound ? 'compound' : 'npm',
-      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : compound ? t('Compound') : t('Unnamed'), folder), folder, shared: false, allowMultiple: false,
-      packageJson: folder ? joinPath(folder, 'package.json') : '', command: 'run', scripts: '', arguments: '',
-      nodeRuntime: '', nodeOptions: '', packageManager: '', env: {}, preLaunchTask: '',
-      program: entry || '', runArgs: '', flavor: '', attachArgs: '', interpreter: '', workingDir: '', members: [],
-      beforeLaunch: [], temporary: false,
-    });
+    const realKind = flutter ? 'flutter' : script ? 'script' : compound ? 'compound' : 'npm';
+    // New configurations start from their kind's template, like IntelliJ.
+    const c = withId(applyTemplate({
+      ...blankConfig(realKind, folder),
+      name: uniqueName(flutter ? baseName(entry) || 'main.dart' : script ? t('Script') : compound ? t('Compound') : t('Unnamed'), folder),
+      program: entry || '',
+    }));
     S.configs.push(c);
     markDirty();
     selectConfig(c.id);
@@ -660,12 +829,13 @@
   }
 
   function save(opts) {
-    const c = selected();
+    const c = S.mode === 'templates' ? undefined : selected();
     const configs = S.configs.map(strip);
     const sel = c ? { folder: c.folder, name: c.name } : undefined;
     vscode.postMessage({
       type: 'save',
       configs,
+      templates: Object.fromEntries(Object.entries(S.templateObjs).map(([k, v]) => [k, strip(v)])),
       close: !!opts.close,
       selected: sel,
       run: opts.run !== undefined && sel ? { ...sel, debug: opts.run } : undefined,
@@ -680,7 +850,9 @@
           configs: m.configs.map(withId), others: m.others, folders: m.folders, packageJsons: m.packageJsons,
           dartEntrypoints: m.dartEntrypoints || [], hasDart: m.hasDart !== false,
           commands: m.commands, home: m.home, sep: m.sep, strings: m.strings, dirty: false, error: '', inspected: {},
+          mode: 'configs',
         });
+        loadTemplates(m.templates);
         const pre = m.selected && S.configs.find(c => c.folder === m.selected.folder && c.name === m.selected.name);
         render();
         selectConfig(pre ? pre.id : S.configs[0] ? S.configs[0].id : null);
@@ -714,9 +886,15 @@
       case 'saved': {
         const cur = selected();
         const key = cur ? cur.folder + '::' + cur.name : '';
+        const kind = cur && cur.kind;
         S.configs = m.configs.map(withId);
+        loadTemplates(m.templates);
         S.inspected = {};
         S.dirty = false;
+        if (S.mode === 'templates') {
+          selectConfig((S.templateObjs[kind] || S.templateObjs.npm).id);
+          break;
+        }
         const again = S.configs.find(c => c.folder + '::' + c.name === key);
         selectConfig(again ? again.id : S.configs[0] ? S.configs[0].id : null);
         break;

@@ -6,7 +6,7 @@ import type { Runtimes } from './extension';
 import { describeStep, invalidStep } from './beforeLaunch';
 import { configKey, NPM_COMMANDS, packageManagerName, RunConfig } from './model';
 import { packageScripts, projectNode, projectPackageManager, resolvePackageManager } from './project';
-import { ConfigStore, StoredConfig } from './store';
+import { ConfigStore, StoredConfig, Templates } from './store';
 
 const t = vscode.l10n.t;
 
@@ -20,8 +20,8 @@ export interface EditorHooks {
 type Incoming =
   | { type: 'ready' }
   | { type: 'inspect'; id: string; config: RunConfig }
-  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager' | 'program' | 'workingDir'; current: string; folder: string; kind?: string }
-  | { type: 'save'; configs: StoredConfig[]; close: boolean; run?: { folder: string; name: string; debug: boolean }; selected?: { folder: string; name: string } }
+  | { type: 'browse'; field: 'packageJson' | 'nodeRuntime' | 'packageManager' | 'program' | 'workingDir' | 'envFile'; current: string; folder: string; kind?: string }
+  | { type: 'save'; configs: StoredConfig[]; templates?: Templates; close: boolean; run?: { folder: string; name: string; debug: boolean }; selected?: { folder: string; name: string } }
   | { type: 'cancel' }
   | { type: 'openLaunch'; folder: string; name?: string }
   | { type: 'refresh' };
@@ -29,6 +29,10 @@ type Incoming =
 /** Strings used by media/editor.js, translated here. */
 function strings(): Record<string, string> {
   const keys = [
+    'Folder name', 'Double-click to rename. Drop configurations here.', 'Move into New Folder', 'New Folder', 'Templates',
+    'Back to configurations', 'Edit configuration templates…', 'Template: {0}',
+    'New {0} configurations (from + or a ▷ in the editor) start with these values.', 'Env file:',
+    'Variables loaded before launch (dotenv format); the ones above override them.',
     'Before launch', 'Add', 'Remove', 'Move Up', 'Move Down', 'There are no tasks to run before launch',
     'Run Another Configuration', 'Run npm script', 'Run VS Code Task', 'Launch Web Browser', 'Choose a configuration…', 'script',
     'Task name (e.g. npm: build)', 'Temporary configuration', 'Save Configuration', 'Keep it: temporary configurations are replaced after 5',
@@ -105,6 +109,7 @@ export class EditorPanel {
     this.post({
       type: 'init',
       configs: this.store.list(),
+      templates: this.store.templates(),
       others: this.store.others(),
       folders,
       packageJsons: pkgUris.map(u => u.fsPath).sort(),
@@ -153,7 +158,7 @@ export class EditorPanel {
       }
       case 'browse': {
         const defaultUri = m.current
-          ? vscode.Uri.file(m.field === 'packageJson' || m.field === 'program' ? path.dirname(m.current) : m.current)
+          ? vscode.Uri.file(m.field === 'packageJson' || m.field === 'program' || m.field === 'envFile' ? path.dirname(m.current) : m.current)
           : vscode.Uri.file(m.folder || this.home);
         const folderPick = m.field === 'workingDir';
         const picked = await vscode.window.showOpenDialog({
@@ -181,6 +186,7 @@ export class EditorPanel {
           this.post({ type: 'error', message: error });
           return;
         }
+        if (m.templates) { await this.store.saveTemplates(m.templates); }
         await this.store.saveAll(m.configs);
         if (m.selected && m.configs.some(c => c.folder === m.selected!.folder && c.name === m.selected!.name)) {
           await this.hooks.select(m.selected.folder, m.selected.name);
@@ -188,7 +194,7 @@ export class EditorPanel {
         if (m.close || m.run) {
           this.panel.dispose();
         } else {
-          this.post({ type: 'saved', configs: this.store.list() });
+          this.post({ type: 'saved', configs: this.store.list(), templates: this.store.templates() });
         }
         if (m.run) {
           await this.hooks.run(m.run.folder, m.run.name, m.run.debug);

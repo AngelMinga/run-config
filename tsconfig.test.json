@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node"]
   },
-  "include": ["src/model.ts", "src/detect.ts", "src/project.ts", "src/intellij.ts", "src/flutter.ts", "src/ansi.ts", "src/beforeLaunch.ts", "src/entryPoints.ts", "src/scriptAdapter.ts", "src/test"]
+  "include": ["src/model.ts", "src/detect.ts", "src/project.ts", "src/intellij.ts", "src/flutter.ts", "src/ansi.ts", "src/beforeLaunch.ts", "src/dotenv.ts", "src/entryPoints.ts", "src/scriptAdapter.ts", "src/test"]
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+- **Env file** (`envFile`) for npm, Flutter and Script configurations, dotenv format with `${VAR}` expansion; the configuration's `env` wins.
+- **Configuration templates** per kind (dialog: *Edit configuration templates…*), applied to new configurations and ▷ temporaries.
+- **Stop and Rerun?** before relaunching a running configuration (setting `runConfigurations.confirmRerun`); compounds ask once.
+- **Folders and reordering** in the dialog (new folder, rename, drag & drop, Alt+↑/↓); order and `group` saved in launch.json, folders shown in Services and the selector.
+- **Run Anything** (`⌃⌥⇧R`): run a typed command, a recent one, a configuration or a package.json script in the Run window.
+- The Run window's Rerun now also works for finished runs that aren't stored configurations.
+
 ## 0.6.0
 
 - **▷ Run | Debug in the editor** (CodeLens) for `package.json` scripts, Dart `main()` (Flutter apps), Python `__main__` and shell scripts. Reuses an equivalent configuration or creates a **temporary** one (last 5 kept) that can be saved from the selector, Services or the dialog. Setting `runConfigurations.codeLens`.

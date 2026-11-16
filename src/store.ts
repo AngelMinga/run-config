@@ -6,6 +6,10 @@ import * as vscode from 'vscode';
 import { fromLaunchEntry, isRunType, normalize, RunConfig, toLaunchEntry } from './model';
 
 const LOCAL_KEY = 'runConfigurations.local';
+const TEMPLATES_KEY = 'runConfigurations.templates';
+
+/** Template per kind (a configuration whose identity fields are ignored). */
+export type Templates = Partial<Record<RunConfig['kind'], RunConfig>>;
 
 /** A configuration plus where it was loaded from, so edits/renames/moves can be written back. */
 export interface StoredConfig extends RunConfig {
@@ -114,6 +118,19 @@ export class ConfigStore implements vscode.Disposable {
   }
 
   /** Replaces the whole set of npm configurations with `next` (as edited in the dialog). */
+  templates(): Templates {
+    const raw = this.state.get<Templates>(TEMPLATES_KEY, {});
+    const out: Templates = {};
+    for (const kind of ['npm', 'flutter', 'script'] as const) {
+      if (raw[kind]) { out[kind] = normalize({ ...raw[kind]!, kind, folder: raw[kind]!.folder ?? '', name: '' }); }
+    }
+    return out;
+  }
+
+  async saveTemplates(templates: Templates): Promise<void> {
+    await this.state.update(TEMPLATES_KEY, templates);
+  }
+
   async saveAll(next: StoredConfig[]): Promise<void> {
     const previous = this.list();
     const touched = new Set<string>();
@@ -171,6 +188,12 @@ export class ConfigStore implements vscode.Disposable {
     }
     for (const { c, index } of placed) {
       if (index < 0) { apply(['configurations', entries().length], toLaunchEntry(c, this.home), true); }
+    }
+    // 3. Order as in the dialog: the slots our entries occupy get them in the wanted order (other entries stay put).
+    const slots = entries().flatMap((e, i) => (isEntry(e) && isRunType(e.type) ? [i] : []));
+    const order = slots.map(i => String((entries()[i] as Record<string, unknown>).name));
+    if (slots.length === wanted.length && order.some((n, k) => n !== wanted[k].name)) {
+      wanted.forEach((c, k) => apply(['configurations', slots[k]], toLaunchEntry(c, this.home)));
     }
     if (text !== readLaunch(folder).text) {
       fs.mkdirSync(path.dirname(file), { recursive: true });

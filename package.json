@@ -2,7 +2,7 @@
   "name": "run-configurations",
   "displayName": "%extension.displayName%",
   "description": "%extension.description%",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "angelminga",
   "license": "MIT",
   "repository": {
@@ -146,6 +146,12 @@
         "title": "%command.saveTemporary%",
         "category": "%category%",
         "icon": "$(save)"
+      },
+      {
+        "command": "runConfigurations.runAnything",
+        "title": "%command.runAnything%",
+        "category": "%category%",
+        "icon": "$(terminal)"
       }
     ],
     "keybindings": [
@@ -169,6 +175,11 @@
         "command": "runConfigurations.select",
         "key": "alt+shift+f10",
         "mac": "ctrl+alt+r"
+      },
+      {
+        "command": "runConfigurations.runAnything",
+        "key": "ctrl+alt+shift+r",
+        "mac": "ctrl+alt+shift+r"
       }
     ],
     "menus": {
@@ -245,6 +256,11 @@
           "command": "runConfigurations.stopAll",
           "when": "view == runConfigurations.services && runConfigurations.running",
           "group": "navigation@2"
+        },
+        {
+          "command": "runConfigurations.runAnything",
+          "when": "view == runConfigurations.services",
+          "group": "navigation@0"
         }
       ],
       "view/item/context": [
@@ -455,6 +471,14 @@
                     }
                   ]
                 }
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
               }
             }
           }
@@ -615,6 +639,14 @@
                     }
                   ]
                 }
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
               }
             }
           }
@@ -765,6 +797,14 @@
                     }
                   ]
                 }
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
+              },
+              "envFile": {
+                "type": "string",
+                "description": "%attr.envFile%"
               }
             }
           }
@@ -806,6 +846,10 @@
                   "type": "string"
                 },
                 "description": "%attr.configurations%"
+              },
+              "group": {
+                "type": "string",
+                "description": "%attr.group%"
               }
             }
           }
@@ -873,6 +917,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "%settings.codeLens%"
+        },
+        "runConfigurations.confirmRerun": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "%settings.confirmRerun%"
         }
       }
     },

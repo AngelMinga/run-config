@@ -7,15 +7,17 @@ import { DeviceService } from './devices';
 import { deviceIcon } from './flutter';
 import { EditorPanel } from './editor';
 import { findIntellijProjects, ImportedConfig, readIntellijConfigs } from './intellij';
-import { anchorPath, emptyConfig, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, COMPOUND_TYPE, configKey, DEBUG_TYPE, expandCompound, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
+import { anchorPath, applyTemplate, emptyConfig, buildFlutterLaunch, buildNodeLaunch, buildScriptLaunch, COMPOUND_TYPE, configKey, DEBUG_TYPE, expandCompound, FLUTTER_TYPE, fromLaunchEntry, RunConfig, SCRIPT_TYPE, toLaunchEntry } from './model';
 import { RunsModel, splitKey } from './runs';
+import { RunAnything } from './runAnything';
 import { runBeforeLaunch, BeforeLaunchHost } from './beforeLaunchRunner';
+import { mergeEnv, parseDotenv } from './dotenv';
 import { dartEntries, EntryPoint, packageJsonEntries, pythonEntries, shellEntries } from './entryPoints';
 import { RunViewProvider } from './runView';
 import { ConfigNode, ServicesProvider } from './services';
 import { ScriptDebugAdapter } from './scriptAdapter';
 import { ancestors, flutterRoot, projectNode, ResolveContext, resolveNode, resolvePackageManager } from './project';
-import { ConfigStore, launchJsonPath, StoredConfig } from './store';
+import { ConfigStore, launchJsonPath, StoredConfig, Templates } from './store';
 
 const home = os.homedir();
 const t = vscode.l10n.t;
@@ -116,6 +118,9 @@ class Sessions implements vscode.Disposable {
 export interface TestApi {
   runs(): { key: string; name: string; running: boolean; exitCode?: number; text: string }[];
   configs(): RunConfig[];
+  /** Same paths as the dialog's Apply and Run Anything's Enter. */
+  save(configs: StoredConfig[], templates?: Templates): Promise<void>;
+  runCommand(command: string): Promise<void>;
 }
 
 export function activate(context: vscode.ExtensionContext): TestApi {
@@ -160,6 +165,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
       const c = fromLaunchEntry(config, folderPath, home, true);
       if (!c.name) { c.name = config.name || 'npm'; }
+      if (!loadEnvFile(c)) { return undefined; }
       if (!fs.existsSync(c.packageJson)) {
         void showConfigError(t('package.json not found: {0}', c.packageJson), c);
         return undefined;
@@ -170,6 +176,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
         void showConfigError(t('Node runtime not found: {0}', c.nodeRuntime), c);
         return undefined;
       }
+      if (!(await confirmRerun(c, config))) { return undefined; }
       if (!(await runBeforeLaunch(c, beforeHost))) { return undefined; }
       if (!c.allowMultiple) {
         await sessions.stop(configKey(c));
@@ -193,6 +200,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
       const c = fromLaunchEntry(config, folderPath, home, true);
       if (!c.name) { c.name = config.name || 'Flutter'; }
+      if (!loadEnvFile(c)) { return undefined; }
       if (!vscode.extensions.getExtension(DART_EXTENSION)) {
         const install = t('Install Flutter Extension');
         if (await vscode.window.showErrorMessage(t('Running Flutter configurations needs the Dart and Flutter extensions.'), install) === install) {
@@ -211,6 +219,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       }
       const attach = config.request === 'attach' || config.attach === true;
       // Attaching connects to an app that is already running: nothing to prepare.
+      if (!attach && !(await confirmRerun(c, config))) { return undefined; }
       if (!attach && !(await runBeforeLaunch(c, beforeHost))) { return undefined; }
       if (!c.allowMultiple && !attach) {
         await sessions.stop(configKey(c));
@@ -235,6 +244,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       const folderPath = folder?.uri.fsPath ?? store.folders()[0] ?? home;
       const c = fromLaunchEntry(config, folderPath, home, true);
       if (!c.name) { c.name = config.name || 'script'; }
+      if (!loadEnvFile(c)) { return undefined; }
       if (!c.program || !fs.existsSync(c.program)) {
         void showConfigError(t('Script not found: {0}', c.program || '—'), c);
         return undefined;
@@ -243,6 +253,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
         void showConfigError(t('Working directory not found: {0}', c.workingDir), c);
         return undefined;
       }
+      if (!(await confirmRerun(c, config))) { return undefined; }
       if (!(await runBeforeLaunch(c, beforeHost))) { return undefined; }
       if (!c.allowMultiple) {
         await sessions.stop(configKey(c));
@@ -268,6 +279,36 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     },
   }));
 
+  /** Loads the configuration's env file into `c.env` (its own variables win). False (error shown) if unreadable. */
+  const loadEnvFile = (c: RunConfig): boolean => {
+    if (!c.envFile) { return true; }
+    let text: string;
+    try {
+      text = fs.readFileSync(c.envFile, 'utf8');
+    } catch {
+      void showConfigError(t('Env file not found: {0}', c.envFile), c);
+      return false;
+    }
+    c.env = mergeEnv(parseDotenv(text, process.env), c.env);
+    return true;
+  };
+
+  /** IntelliJ's "Stop and Rerun?" when the configuration is already running (unless multiple instances are allowed). */
+  const askRerun = async (name: string): Promise<boolean> => {
+    if (!vscode.workspace.getConfiguration('runConfigurations').get<boolean>('confirmRerun', true)) { return true; }
+    const rerun = t('Stop and Rerun');
+    const always = t("Stop and Rerun, Don't Ask Again");
+    const answer = await vscode.window.showWarningMessage(t('"{0}" is running. Stop it and run it again?', name), { modal: true }, rerun, always);
+    if (answer === always) {
+      await vscode.workspace.getConfiguration('runConfigurations').update('confirmRerun', false, vscode.ConfigurationTarget.Global);
+    }
+    return answer === rerun || answer === always;
+  };
+  const confirmRerun = async (c: RunConfig, config: vscode.DebugConfiguration): Promise<boolean> => {
+    if (c.allowMultiple || config.__confirmed || !sessions.running(configKey(c)).length) { return true; }
+    return askRerun(c.name);
+  };
+
   const showConfigError = async (message: string, c: RunConfig) => {
     const edit = t('Edit Configuration');
     if (await vscode.window.showErrorMessage(message, edit) === edit) {
@@ -278,7 +319,8 @@ export function activate(context: vscode.ExtensionContext): TestApi {
   // ---------- running ----------
   const wsFolder = (fsPath: string) => vscode.workspace.workspaceFolders?.find(f => f.uri.fsPath === fsPath);
 
-  const launch = async (sel: Selection | undefined, debug: boolean, attach = false): Promise<void> => {
+  /** `confirmed`: the user already chose to rerun (Rerun buttons, compounds ask once for all members). */
+  const launch = async (sel: Selection | undefined, debug: boolean, attach = false, confirmed = false): Promise<void> => {
     if (!sel) {
       const picked = await pick();
       if (!picked) { return; }
@@ -298,13 +340,13 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       return;
     }
     if (c.kind === 'compound') {
-      return launchCompound(c, debug);
+      return launchCompound(c, debug, confirmed);
     }
     if (attach && c.kind !== 'flutter') {
       void vscode.window.showWarningMessage(t('Attach is only available for Flutter configurations.'));
       return;
     }
-    const entry = { ...toLaunchEntry(c, home), ...(attach ? { attach: true } : {}) };
+    const entry = { ...toLaunchEntry(c, home), ...(attach ? { attach: true } : {}), ...(confirmed ? { __confirmed: true } : {}) };
     // Attach always runs with the debugger: there is nothing to run "without debugging".
     await vscode.debug.startDebugging(wsFolder(c.folder), entry as vscode.DebugConfiguration, attach ? {} : options);
   };
@@ -315,8 +357,14 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     return expandCompound(c, name => store.find(c.folder, name) ?? (others.some(o => o.name === name) ? { kind: 'launch' } : undefined));
   };
 
-  const launchCompound = async (c: RunConfig, debug: boolean) => {
+  const launchCompound = async (c: RunConfig, debug: boolean, confirmed = false) => {
     const { names, missing } = compoundTargets(c);
+    // One question for the whole compound, not one per running member.
+    const running = names.filter(n => {
+      const m = store.find(c.folder, n);
+      return m && !m.allowMultiple && sessions.running(configKey(m)).length;
+    });
+    if (running.length && !confirmed && !(await askRerun(c.name))) { return; }
     if (missing.length) {
       void vscode.window.showWarningMessage(t('Compound "{0}": configurations not found: {1}', c.name, missing.join(', ')));
     }
@@ -326,7 +374,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     }
     // All at once, like IntelliJ.
     await Promise.all(names.map(name => launch(
-      store.find(c.folder, name) ? { kind: 'npm', folder: c.folder, name } : { kind: 'launch', folder: c.folder, name }, debug)));
+      store.find(c.folder, name) ? { kind: 'npm', folder: c.folder, name } : { kind: 'launch', folder: c.folder, name }, debug, false, true)));
   };
 
   /** Keys whose sessions belong to a configuration (a compound: its members'). */
@@ -403,7 +451,8 @@ export function activate(context: vscode.ExtensionContext): TestApi {
         const running = isRunning(c);
         items.push({
           label: `$(${running ? 'debug-restart' : kindIcon(c.kind)}) ${c.name}`,
-          description: (c.temporary ? `${t('temporary')} · ` : '') + describe(c) + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
+          description: (c.group ? `${c.group} › ` : '') + (c.temporary ? `${t('temporary')} · ` : '') + describe(c)
+            + (folderName(c.folder) ? ` · ${folderName(c.folder)}` : ''),
           detail: running ? t('Running') : undefined,
           picked: same(sel),
           sel,
@@ -675,9 +724,9 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     rerun: async (run, debug) => {
       const { folder, name, attach } = splitKey(run.key);
       if (store.find(folder, name)) {
-        await launch({ kind: 'npm', folder, name }, debug, attach);
-      } else if (run.session) {
-        await vscode.debug.startDebugging(wsFolder(folder), run.session.configuration, { noDebug: !debug });
+        await launch({ kind: 'npm', folder, name }, debug, attach, true);
+      } else if (run.config) {
+        await vscode.debug.startDebugging(wsFolder(folder), run.config, { noDebug: !debug });
       }
     },
     stop: async run => {
@@ -779,7 +828,7 @@ export function activate(context: vscode.ExtensionContext): TestApi {
       const taken = (n: string) => all.some(o => o.folder === candidate.folder && o.name === n);
       let name = candidate.name;
       for (let i = 2; taken(name); i++) { name = `${candidate.name} (${i})`; }
-      c = { ...candidate, name, temporary: true };
+      c = { ...applyTemplate(candidate, store.templates()[candidate.kind]), name, temporary: true };
       const next = [...all, c];
       const temps = next.filter(o => o.temporary);
       for (const old of temps.slice(0, Math.max(0, temps.length - MAX_TEMPORARY))) {
@@ -839,8 +888,24 @@ export function activate(context: vscode.ExtensionContext): TestApi {
     },
   ));
 
+  // ---------- Run Anything ----------
+  const runAnything = new RunAnything(context.workspaceState, {
+    configs: () => store.list(),
+    run: async (c, debug) => {
+      const sel: Selection = { kind: 'npm', folder: c.folder, name: c.name };
+      await setSelection(sel);
+      await launch(sel, debug);
+    },
+    nodeDir: async folder => {
+      const node = projectNode({ packageJson: path.join(folder, 'package.json'), folder }, await runtimes.context()).node?.path;
+      return node ? path.dirname(node) : undefined;
+    },
+    icon: kindIcon,
+  });
+
   // ---------- commands ----------
   context.subscriptions.push(
+    vscode.commands.registerCommand('runConfigurations.runAnything', () => runAnything.show()),
     vscode.commands.registerCommand('runConfigurations.runEntry', (candidate: RunConfig, debug: boolean) => runEntry(candidate, debug)),
     vscode.commands.registerCommand('runConfigurations.saveTemporary', async (node?: ConfigNode) => {
       const c = nodeConfig(node);
@@ -900,6 +965,11 @@ export function activate(context: vscode.ExtensionContext): TestApi {
   return {
     runs: () => runs.list().map(r => ({ key: r.key, name: r.name, running: r.running, exitCode: r.exitCode, text: r.spans.map(x => x.text).join('') })),
     configs: () => store.list(),
+    save: async (configs, templates) => {
+      if (templates) { await store.saveTemplates(templates); }
+      await store.saveAll(configs);
+    },
+    runCommand: command => runAnything.runCommand(command, vscode.workspace.workspaceFolders?.[0]),
   };
 }
 

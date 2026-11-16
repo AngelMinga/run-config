@@ -26,6 +26,8 @@ export interface RunMeta {
 
 export interface Run extends RunMeta {
   session?: vscode.DebugSession;
+  /** Resolved configuration of the last session, to rerun runs that aren't stored configurations. */
+  config?: vscode.DebugConfiguration;
   spans: Span[];
   size: number;
   converters: Map<string, AnsiConverter>;
@@ -150,6 +152,7 @@ export class RunsModel implements vscode.Disposable {
       input: config.type === 'script-run',
       started: Date.now(),
       session,
+      config: config,
     };
     if (run) {
       Object.assign(run, meta, { spans: [], size: 0, converters: new Map() });
@@ -230,6 +233,6 @@ export class RunsModel implements vscode.Disposable {
 }
 
 export function meta(run: Run): RunMeta {
-  const { session: _s, spans: _sp, size: _sz, converters: _c, ...m } = run;
+  const { session: _s, config: _cfg, spans: _sp, size: _sz, converters: _c, ...m } = run;
   return m;
 }

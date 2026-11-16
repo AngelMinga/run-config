@@ -22,7 +22,12 @@ export class ConfigNode {
   constructor(readonly config: RunConfig) {}
 }
 
-type Node = GroupNode | ConfigNode;
+/** A folder of the list (RunConfig.group) inside a kind. */
+export class FolderNode {
+  constructor(readonly kind: ConfigKind, readonly name: string, readonly configs: RunConfig[]) {}
+}
+
+type Node = GroupNode | FolderNode | ConfigNode;
 
 const GROUPS: { kind: ConfigKind; label: () => string }[] = [
   { kind: 'compound', label: () => t('Compound') },
@@ -45,6 +50,14 @@ export class ServicesProvider implements vscode.TreeDataProvider<Node> {
 
   getChildren(node?: Node): Node[] {
     if (node instanceof GroupNode) {
+      // Folders first (in first-use order), then configurations without one, like IntelliJ.
+      const folders = [...new Set(node.configs.map(c => c.group).filter(Boolean))];
+      return [
+        ...folders.map(f => new FolderNode(node.kind, f, node.configs.filter(c => c.group === f))),
+        ...node.configs.filter(c => !c.group).map(c => new ConfigNode(c)),
+      ];
+    }
+    if (node instanceof FolderNode) {
       return node.configs.map(c => new ConfigNode(c));
     }
     if (node) { return []; }
@@ -55,6 +68,15 @@ export class ServicesProvider implements vscode.TreeDataProvider<Node> {
   }
 
   getTreeItem(node: Node): vscode.TreeItem {
+    if (node instanceof FolderNode) {
+      const running = node.configs.filter(c => this.source.isRunning(c)).length;
+      const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Expanded);
+      item.id = `folder:${node.kind}:${node.name}`;
+      item.iconPath = vscode.ThemeIcon.Folder;
+      item.description = running ? t('{0} running', running) : undefined;
+      item.contextValue = 'folder';
+      return item;
+    }
     if (node instanceof GroupNode) {
       const g = GROUPS.find(x => x.kind === node.kind)!;
       const running = node.configs.filter(c => this.source.isRunning(c)).length;

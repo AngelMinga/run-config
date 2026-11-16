@@ -64,5 +64,9 @@
   "task.script": "package.json script to run.",
   "task.packageJson": "package.json whose directory the script runs in.",
   "attr.beforeLaunch": "Steps run in order before launching (IntelliJ's *Before launch*): `config` (another configuration, waits until it ends), `npm` (a package.json script), `task` (a VS Code task) and `browser` (opens a URL). A failing step cancels the launch.",
-  "settings.codeLens": "Show **▷ Run | Debug** above `package.json` scripts, Dart `main()`, Python `if __name__ == \"__main__\"` and shell scripts, like IntelliJ's gutter icons. Running one creates a temporary configuration (the last 5 are kept) unless an equivalent configuration exists."
+  "settings.codeLens": "Show **▷ Run | Debug** above `package.json` scripts, Dart `main()`, Python `if __name__ == \"__main__\"` and shell scripts, like IntelliJ's gutter icons. Running one creates a temporary configuration (the last 5 are kept) unless an equivalent configuration exists.",
+  "command.runAnything": "Run Anything…",
+  "attr.group": "Folder of the configuration in the Run/Debug Configurations list and the Services view.",
+  "attr.envFile": "`.env` file (dotenv format) loaded before launch; `env` overrides its variables.",
+  "settings.confirmRerun": "Ask before stopping and rerunning a configuration that is already running (IntelliJ's *Stop and Rerun?*). The Run window's Rerun button never asks."
 }

@@ -392,3 +392,35 @@ button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-off
   .step { flex-wrap: wrap; }
   .step-type { min-width: 0; }
 }
+
+/* ---------- Folders and drag & drop ---------- */
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 8px 0 30px;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+}
+.folder .label { overflow: hidden; text-overflow: ellipsis; }
+.folder-input { height: 20px; flex: 1; min-width: 0; }
+.item.nested { padding-left: 52px; }
+.item.dragging { opacity: 0.5; }
+.drop { box-shadow: inset 0 2px 0 var(--vscode-focusBorder); }
+.group.drop, .folder.drop { box-shadow: none; outline: 1px dashed var(--vscode-focusBorder); outline-offset: -2px; }
+
+/* ---------- Templates ---------- */
+.sidebar .tree { flex: 1; }
+.link {
+  border: none;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+.link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.templates-link { margin: 8px 12px 10px; align-self: flex-start; }
+.tpl-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.1em; }
+.hint.tpl { margin-left: 0; }
